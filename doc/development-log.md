@@ -293,6 +293,36 @@ vLLM converts MiniMax's internal XML-ish tool format → proper `tool_calls` API
 
 ---
 
+## 2026-05-09 16:30 - Code Refactor + Colored UI
+
+**Iteration**: N/A (refactor)
+**Problem**: Monolithic index.ts and llm.ts files hard to maintain
+**Solution**:
+1. Split index.ts into modular structure:
+   - cli.ts: Main CLI entry and agent loop
+   - ui.ts: Colored UI output functions with COLORS
+   - state.ts: Application state management
+   - fileOps.ts: File operations (read, write, edit, search)
+   - shell.ts: Shell command execution
+   - context.ts: Project context loading
+2. Split llm.ts into:
+   - llm.ts: LLM chat functions
+   - providers.ts: Provider configurations
+   - schema.ts: JSON schema and parseSchemaResponse
+3. Add colored terminal output:
+   - Header with cyan background
+   - User prompt in cyan
+   - Assistant messages in white
+   - Tool calls in yellow
+   - Results in green
+   - Errors in red
+   - Provider/model selection shows schema/native mode
+**Solved**: ✓
+**Not Solved**: -
+**Reason/Lesson**: Modular structure easier to test and maintain
+
+---
+
 ## Plan: vLLM/SGLang Integration
 
 ## Plan: vLLM/SGLang Integration
