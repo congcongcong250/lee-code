@@ -54,7 +54,7 @@ export const isTTY = (): boolean => {
 export function printHeader() {
   console.log("");
   console.log(`${COLORS.bgCyan}${COLORS.black}+=============================================================+${COLORS.reset}`);
-  console.log(`${COLORS.bgCyan}${COLORS.black}|              lee-code v1.0.0 - AI Coding Assistant       |${COLORS.reset}`);
+  console.log(`${COLORS.bgCyan}${COLORS.black}|              lee-code v1.0.0 - AI Coding Assistant          |${COLORS.reset}`);
   console.log(`${COLORS.bgCyan}${COLORS.black}+=============================================================+${COLORS.reset}`);
   console.log("");
 }
