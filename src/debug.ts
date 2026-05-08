@@ -95,7 +95,7 @@ export function saveLogs(filename: string = "lee-code.log"): string {
     `${l.timestamp} [${l.level.toUpperCase()}] ${l.message}${l.data ? " " + JSON.stringify(l.data) : ""}`
   ).join("\n");
   
-  require("fs").writeFileSync(filename, content, "utf-8");
+  require("fs").appendFileSync(filename, content + "\n", "utf-8");
   return filename;
 }
 
