@@ -1,0 +1,22 @@
+{
+  "name": "lee-code",
+  "version": "1.0.0",
+  "description": "A CLI coding assistant inspired by Claude Code",
+  "main": "dist/index.js",
+  "bin": {
+    "lee-code": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "fast-glob": "^3.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.0"
+  }
+}
