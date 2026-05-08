@@ -14,7 +14,7 @@ export interface ChatResponse {
   done: boolean;
 }
 
-export type LLMProvider = "ollama" | "openai" | "anthropic" | "groq" | "huggingface";
+export type LLMProvider = "ollama" | "openai" | "anthropic" | "groq" | "huggingface" | "openrouter";
 
 export interface LLMConfig {
   provider: LLMProvider;
@@ -23,7 +23,7 @@ export interface LLMConfig {
   model: string;
 }
 
-const DEFAULT_PROVIDER: LLMProvider = "groq";
+const DEFAULT_PROVIDER: LLMProvider = "openrouter";
 
 const PROVIDER_CONFIGS: Record<LLMProvider, { baseUrl: string; defaultModel: string }> = {
   ollama: {
@@ -40,11 +40,15 @@ const PROVIDER_CONFIGS: Record<LLMProvider, { baseUrl: string; defaultModel: str
   },
   groq: {
     baseUrl: "https://api.groq.com/openai/v1",
-    defaultModel: "groq/compound",
+    defaultModel: "llama-3.3-70b-versatile",
   },
   huggingface: {
     baseUrl: "https://api-inference.huggingface.co",
     defaultModel: "meta-llama/Llama-3.1-70b-instruct",
+  },
+  openrouter: {
+    baseUrl: "https://openrouter.ai/api/v1",
+    defaultModel: "minimax/minimax-m2.5:free",
   },
 };
 
@@ -54,7 +58,7 @@ function getConfig(config: Partial<LLMConfig>): LLMConfig {
   return {
     provider,
     baseUrl: config.baseUrl || pc.baseUrl,
-    apiKey: config.apiKey,
+    apiKey: config.apiKey || getEnvApiKey(provider),
     model: config.model || pc.defaultModel,
   };
 }
@@ -70,6 +74,7 @@ export async function chat(
       return chatOllama(messages, cfg);
     case "openai":
     case "groq":
+    case "openrouter":
       return chatOpenAI(messages, cfg);
     case "anthropic":
       return chatAnthropic(messages, cfg);
@@ -124,12 +129,20 @@ async function chatOpenAI(messages: ChatMessage[], cfg: LLMConfig): Promise<Chat
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
   };
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${cfg.apiKey}`,
+  };
+
+  // OpenRouter requires additional headers
+  if (cfg.baseUrl && cfg.baseUrl.includes("openrouter.ai")) {
+    headers["HTTP-Referer"] = "https://lee-code.local";
+    headers["X-Title"] = "lee-code";
+  }
+
   const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${cfg.apiKey}`,
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 
@@ -230,9 +243,12 @@ async function chatHuggingFace(messages: ChatMessage[], cfg: LLMConfig): Promise
 
 export function getEnvApiKey(provider: LLMProvider): string | undefined {
   switch (provider) {
+    case "openrouter":
+      return process.env.OPENROUTER_API_KEY || process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
     case "openai":
+      return process.env.OPENAI_API_KEY;
     case "groq":
-      return process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY;
+      return process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
     case "anthropic":
       return process.env.ANTHROPIC_API_KEY;
     case "huggingface":
@@ -244,7 +260,8 @@ export function getEnvApiKey(provider: LLMProvider): string | undefined {
 
 export function listProviders(): { name: string; defaultModel: string }[] {
   return [
-    { name: "groq", defaultModel: "groq/compound" },
+    { name: "openrouter", defaultModel: "minimax/minimax-m2.5:free" },
+    { name: "groq", defaultModel: "llama-3.1-70b-versatile" },
     { name: "ollama", defaultModel: "llama3" },
     { name: "openai", defaultModel: "gpt-4o-mini" },
     { name: "anthropic", defaultModel: "claude-3-haiku-20240307" },

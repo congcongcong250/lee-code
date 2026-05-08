@@ -104,8 +104,8 @@ async function loadProjectContext(rootDir: string): Promise<string> {
   return output;
 }
 
-let provider: LLMProvider = "groq";
-let model = "groq/compound";
+let provider: LLMProvider = "openrouter";
+let model = "minimax/minimax-m2.5:free";
 let customBaseUrl = "";
 let apiKey = "";
 let demoMode = false;
@@ -144,7 +144,7 @@ Keep responses concise and practical. If user asks to implement something, provi
   try {
     const cfg: any = { provider, model };
     if (customBaseUrl) cfg.baseUrl = customBaseUrl;
-    if (provider === "openai" || provider === "anthropic" || provider === "groq" || provider === "huggingface") {
+    if (provider === "openai" || provider === "anthropic" || provider === "groq" || provider === "huggingface" || provider === "openrouter") {
       cfg.apiKey = apiKey || getEnvApiKey(provider);
     }
     
