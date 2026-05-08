@@ -7,6 +7,7 @@ A CLI coding assistant inspired by Claude Code. Connects to LLMs (Ollama, Groq, 
 - [ ] Review conversation log and fix status: error
 - [ ] Review conversation and fix LLM returning weird error
 - [ ] Override body schema tools if there's native messages tools
+- [ ] Summarize a PRD and one shot with Codex or Claude Code
 
 ## Quick Start
 
