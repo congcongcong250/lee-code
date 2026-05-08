@@ -7,7 +7,7 @@ export const COLORS = {
   reverse: "\x1b[7m",
   hidden: "\x1b[8m",
   
-  // Foreground colors
+  // Foreground - use named for max compatibility
   black: "\x1b[30m",
   red: "\x1b[31m",
   green: "\x1b[32m",
@@ -17,8 +17,16 @@ export const COLORS = {
   cyan: "\x1b[36m",
   white: "\x1b[37m",
   gray: "\x1b[90m",
+  brightBlack: "\x1b[90m",
+  brightRed: "\x1b[91m",
+  brightGreen: "\x1b[92m",
+  brightYellow: "\x1b[93m",
+  brightBlue: "\x1b[94m",
+  brightMagenta: "\x1b[95m",
+  brightCyan: "\x1b[96m",
+  brightWhite: "\x1b[97m",
   
-  // Background colors
+  // Background
   bgBlack: "\x1b[40m",
   bgRed: "\x1b[41m",
   bgGreen: "\x1b[42m",
@@ -32,7 +40,16 @@ export const COLORS = {
 
 export function enableColors() {
   process.env.FORCE_COLOR = "1";
+  process.env.NODE_DISABLE_COLORS = "0";
+  require('tty').setRawMode && process.stdout.isTTY ? null : null;
 }
+
+export const isTTY = (): boolean => {
+  if (process.stdout.isTTY) return true;
+  if (process.env.FORCE_COLOR === "1") return true;
+  if (process.env.NODE_DISABLE_COLORS === "0") return true;
+  return false;
+};
 
 export function printHeader() {
   console.log("");
