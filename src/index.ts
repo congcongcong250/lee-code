@@ -272,6 +272,9 @@ Respond concisely. Use tools when needed.`;
       const respContent = response.message.content;
       logLLM("assistant", respContent, { provider, model, iteration: i + 1, duration });
       
+      // Save log immediately
+      saveLLMLogs();
+      
       debug(`Iteration ${i + 1}: LLM responded`, { contentLength: respContent.length, hasToolCalls: !!response.toolCalls, duration });
       
       // Check for API tool calls
@@ -297,6 +300,9 @@ Respond concisely. Use tools when needed.`;
               : `Tool ${tc.name} error: ${result.error}`;
             
             logLLM("tool_result", resultStr, { provider, model, iteration: i + 1, toolCalls: tc.name });
+            
+            // Save log immediately
+            saveLLMLogs();
             debug(`Tool result`, { name: tc.name, success: result.success });
             
             messages.push({ role: "assistant", content: response.message.content });
