@@ -112,3 +112,25 @@ describe("Parse format 5: plain tool name fallback", () => {
     expect(text.toLowerCase().includes("search")).toBe(true);
   });
 });
+
+describe("Parse format 6: <toolName>value</toolName>", () => {
+  it("parses simple content format", () => {
+    const text = "<searchFiles>*.ts</searchFiles>";
+    const m = /<(\w+)>([^<]+)<\/\1>/gi.exec(text);
+    expect(m).not.toBeNull();
+    expect(m![1]).toBe("searchFiles");
+    expect(m![2]).toBe("*.ts");
+  });
+
+  it("extracts value", () => {
+    const text = "<runCommand>ls -la</runCommand>";
+    const m = /<(\w+)>([^<]+)<\/\1>/gi.exec(text);
+    expect(m![2]).toBe("ls -la");
+  });
+
+  it("handles long value", () => {
+    const text = `<searchFiles>**/*.ts</searchFiles>`;
+    const m = /<(\w+)>([^<]+)<\/\1>/gi.exec(text);
+    expect(m![2]).toBe("**/*.ts");
+  });
+});

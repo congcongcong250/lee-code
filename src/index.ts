@@ -195,7 +195,19 @@ function parseToolCallsFromText(text: string): ToolCall[] {
     }
   }
 
-  // 4b. Match XML paired tags: <searchFiles>\n<parameter name="pattern">...  
+  // 4b. Match simple XML content: <toolName>value</toolName>
+  const format4bRe = /<(\w+)>([^<]+)<\/\1>/gi;
+  let match4b: RegExpExecArray | null;
+  while ((match4b = format4bRe.exec(text)) !== null) {
+    const toolName = match4b[1];
+    const content = match4b[2].trim();
+    const matchedTool = toolNames.find(t => fuzzyMatch(t, toolName));
+    if (matchedTool && content && !calls.find(c => c.name === matchedTool)) {
+      calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: { value: content } });
+    }
+  }
+
+  // 5. Match backtick tool: value format  
   const inlineRe = /`(\w+):\s*(.+?)`/g;
   let inlineMatch: RegExpExecArray | null;
   while ((inlineMatch = inlineRe.exec(text)) !== null) {
