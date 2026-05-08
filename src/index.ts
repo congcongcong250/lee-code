@@ -11,6 +11,7 @@ import { spawn } from "child_process";
 import { chat, ChatMessage, LLMProvider, getEnvApiKey, listProviders, ChatResponse } from "./llm.js";
 import { registerTool, Tool, ToolResult, getTool, listTools, clearTools } from "./tools.js";
 import { ToolCall } from "./tools.js";
+import { debug, info, warn as logWarn, error as logError, setLogLevel, saveLogs } from "./debug.js";
 
 interface FileOperationResult {
   success: boolean;
@@ -223,6 +224,7 @@ function promptQuestion(question: string): Promise<string> {
 // === AGENTIC LOOP ===
 async function getLLMResponse(userInput: string, history: ChatMessage[]): Promise<string> {
   const context = await loadProjectContext(process.cwd());
+  debug("getLLMResponse", { userInput, iteration: 0 });
   
   const systemPrompt = `You are lee-code, a CLI coding assistant.
 
@@ -248,6 +250,8 @@ Respond concisely. Use tools when needed.`;
   // Agentic loop: max 5 iterations
   for (let i = 0; i < 5; i++) {
     try {
+      debug(`Iteration ${i + 1}: Calling LLM`, { provider, model, toolsCount: tools.length });
+      
       const cfg: any = { provider, model, tools };
       if (customBaseUrl) cfg.baseUrl = customBaseUrl;
       if (["openai", "anthropic", "groq", "huggingface", "openrouter"].includes(provider)) {
@@ -255,6 +259,7 @@ Respond concisely. Use tools when needed.`;
       }
       
       const response: ChatResponse = await chat(messages, cfg);
+      debug(`Iteration ${i + 1}: LLM responded`, { contentLength: response.message.content.length, hasToolCalls: !!response.toolCalls });
       
       // Check for API tool calls
       let toolCalls = response.toolCalls || [];
@@ -262,14 +267,17 @@ Respond concisely. Use tools when needed.`;
       // If no API tool calls, parse from text (fuzzy)
       if (toolCalls.length === 0) {
         toolCalls = parseToolCallsFromText(response.message.content);
+        debug(`Iteration ${i + 1}: Fuzzy parsed tool calls`, { count: toolCalls.length, parsed: toolCalls.map(t => t.name) });
       }
       
       if (toolCalls.length > 0) {
         // Execute tool calls
         for (const tc of toolCalls) {
+          debug(`Executing tool`, { name: tc.name, args: tc.arguments });
           const fn = getTool(tc.name);
           if (fn) {
             const result = await fn(tc.arguments);
+            debug(`Tool result`, { name: tc.name, success: result.success });
             const toolMsg = result.success 
               ? `Tool ${tc.name} result: ${result.result}`
               : `Tool ${tc.name} error: ${result.error}`;
@@ -286,10 +294,12 @@ Respond concisely. Use tools when needed.`;
         return response.message.content;
       }
     } catch (error) {
+      logError(`Iteration ${i + 1}: Error`, (error as Error).message);
       return `Error: ${(error as Error).message}`;
     }
   }
   
+  logWarn("getLLMResponse", "Max iterations reached");
   return "Max iterations reached";
 }
 
@@ -318,7 +328,16 @@ async function startInteractive() {
     } else if (cmd === ":help" || cmd === ":h") {
       console.log("Commands: :quit, :help, :clear, :provider, :files, :context");
       console.log("         read <file>, search <pattern>, run <cmd>");
-    } else if (cmd === ":clear" || cmd === ":c") {
+      console.log("         :logs, :logs save");
+    } else if (cmd === ":logs save") {
+      const filename = saveLogs();
+      console.log(`Logs saved to ${filename}`);
+    } else if (cmd === ":logs") {
+      const logs = require("./debug.js").getLogs();
+      console.log(`Total logs: ${logs.length}`);
+      logs.slice(-10).forEach((l: any) => {
+        console.log(`${l.timestamp} [${l.level}] ${l.message}`);
+      });
       console.clear();
     } else if (cmd === ":provider") {
       const providers = listProviders();
@@ -351,12 +370,24 @@ async function startInteractive() {
 async function main() {
   const args = process.argv.slice(2);
 
-  if (args.length === 0) {
+  // Separate flags from commands
+  const flags = args.filter(a => a.startsWith('--') || a.startsWith('-'));
+  const commandArgs = args.filter(a => !a.startsWith('--') && !a.startsWith('-'));
+  
+  // Handle --debug flag
+  if (flags.includes('--debug') || flags.includes('-d')) {
+    setLogLevel("debug");
+    debug("Debug mode enabled");
+  }
+
+  const isInteractive = commandArgs.length === 0 || commandArgs[0] === "i" || commandArgs[0] === "interactive";
+
+  if (isInteractive) {
     await startInteractive();
     return;
   }
 
-  const command = args[0];
+  const command = commandArgs[0];
 
   switch (command) {
     case "read":
