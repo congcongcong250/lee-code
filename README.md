@@ -2,14 +2,20 @@
 
 A CLI coding assistant inspired by Claude Code. Connects to LLMs (Ollama, Groq, OpenAI, Anthropic, HuggingFace).
 
+## TODO
+
+- [ ] Review conversation log and fix status: error
+- [ ] Review conversation and fix LLM returning weird error
+- [ ] Override body schema tools if there's native messages tools
+
 ## Quick Start
 
 ```bash
 cd lee-code
 npm install
 npm run build
-node dist/index.js              # Interactive mode
-node dist/index.js help       # Show help
+node dist/cli.js              # Interactive mode
+node dist/cli.js help       # Show help
 ```
 
 ## Features
@@ -28,10 +34,10 @@ node dist/index.js help       # Show help
 ### Interactive Mode
 
 ```bash
-node dist/index.js
+node dist/cli.js
 ❯ help
 ❯ search "src/**/*.ts"
-❯ read src/index.ts
+❯ read src/cli.ts
 ❯ run npm test
 ❯ :provider    # Change LLM provider
 ❯ :quit
@@ -40,12 +46,12 @@ node dist/index.js
 ### Commands
 
 ```bash
-node dist/index.js read <file>        # Read file
-node dist/index.js write <file> <content>  # Write file  
-node dist/index.js search <pattern>  # Search files
-node dist/index.js run <command>   # Run command
-node dist/index.js context         # Show project context
-node dist/index.js help          # Show help
+node dist/cli.js read <file>        # Read file
+node dist/cli.js write <file> <content>  # Write file  
+node dist/cli.js search <pattern>  # Search files
+node dist/cli.js run <command>   # Run command
+node dist/cli.js context         # Show project context
+node dist/cli.js help          # Show help
 ```
 
 ### Flags
@@ -63,7 +69,7 @@ In verbose mode, lee-code logs all LLM interactions to a JSONL file.
 
 ```bash
 # Via flag
-node dist/index.js --verbose
+node dist/cli.js --verbose
 
 # In interactive mode
 ❯ :logs
