@@ -16,7 +16,7 @@ lee-code is a CLI coding assistant inspired by Claude Code. It's designed to be 
 ## Entry Template
 
 ```
-## [Date] - [Title]
+## [YYYY-MM-DD HH:MM] - [Title]
 
 **Iteration**: [commit or version]
 **Problem**: [What was the issue]
@@ -227,6 +227,73 @@ vLLM converts MiniMax's internal XML-ish tool format → proper `tool_calls` API
 **Reason/Lesson**: Separate concerns early - parsing is its own module
 
 ---
+
+## 2026-05-09 14:55 - Use OpenRouter Free Model
+
+**Iteration**: N/A (current change)
+**Problem**: vLLM/SGLang requires self-hosting which is not practical for this use case
+**Solution**: Switch to OpenRouter's built-in free tier which automatically routes to available free models:
+- Changed default model from `minimax/minimax-m2.5:free` to `openrouter/free`
+- OpenRouter's `free` endpoint auto-selects from available free models
+- Removes need for vLLM/SGLang integration
+**Caveat**: Model selection is automatic - may get different models per request
+**Solved**: ✓
+**Not Solved**: -
+**Reason/Lesson**: OpenRouter free tier is simpler than self-hosted vLLM for this use case
+
+---
+
+## 2026-05-09 15:30 - Strict JSON Schema for Tool Calling
+
+**Iteration**: N/A (current change)
+**Problem**: OpenRouter model responses vary in format, need strict schema enforcement for consistent tool calling
+**Solution**: Use OpenRouter's `response_format` with JSON Schema + provider routing:
+1. Added `SCHEMA_JSON` to llm.ts with:
+   - `status`: enum ["continue", "finished", "error", "ask_user"]
+   - `content`: text to user
+   - `tool_calls[]`: array of {id, name, arguments}
+   - `version`: "1.0" for schema evolution
+2. Added `response_format: { type: 'json_schema', json_schema: {...} }` to OpenRouter API calls
+3. Added `provider: { require_parameters: true }` to force routing to schema-supporting models
+4. Added `parseSchemaResponse()` helper to parse JSON from model output
+   - Strips markdown code fences before parsing
+   - Handles malformed JSON gracefully
+5. Changed default model from `openrouter/free` to `minimax/minimax-m2.5:free`
+   - Red team found generic router doesn't consistently support strict schemas
+**Solved**: ✓
+**Not Solved**: Need to test actual API calls with the schema
+**Reason/Lesson**: Structured outputs require specific model selection, auto-routing is unreliable
+**Red Team Issues Addressed**:
+- HIGH: Changed from auto-routing to specific model
+- HIGH: Added error/ask_user status enums
+- MEDIUM: Added markdown stripping before parse
+- MEDIUM: Added tool_calls array support
+
+---
+
+## 2026-05-09 16:00 - Schema Parsing + UX Improvements
+
+**Iteration**: N/A (bug fix + UX improvements)
+**Problem**: 
+1. Schema model responses weren't parsed - fell back to fuzzy parsing
+2. Max 5 iterations too short
+3. No user feedback during agent loop - UX not good
+**Solution**:
+1. Fixed `parseSchemaResponse()` to accept partial content (status + version only)
+2. Added extraction of `tool_calls` from schema JSON in `chatOpenAI()`
+3. Changed MAX_ITERATIONS from 5 to 10
+4. Added UX output:
+   - Display LLM response (truncated to 500 chars)
+   - Show tools being called with `⚙️ Calling:`
+   - Show tool results with `→ ` (truncated to 200 chars)
+5. Added data-driven model config: OPENROUTER_MODELS with schema/native modes
+**Solved**: ✓
+**Not Solved**: -
+**Reason/Lesson**: Schema tools don't always return full content - need status+version for validation
+
+---
+
+## Plan: vLLM/SGLang Integration
 
 ## Plan: vLLM/SGLang Integration
 
