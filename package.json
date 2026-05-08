@@ -7,7 +7,7 @@
     "lee-code": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist && tsc",
     "start": "node dist/cli.js",
     "dev": "ts-node src/cli.ts"
   },
