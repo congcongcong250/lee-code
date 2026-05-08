@@ -53,7 +53,7 @@ Set via env vars or use `:apikey` in interactive mode:
 
 | Provider | Env Variable | Default Model |
 |----------|------------|---------------|
-| Groq (free) | `GROQ_API_KEY` | llama-3.1-70b-versatile |
+| Groq (free) | `GROQ_API_KEY` | groq/compound |
 | OpenAI | `OPENAI_API_KEY` | gpt-4o-mini |
 | Anthropic | `ANTHROPIC_API_KEY` | claude-3-haiku |
 | Ollama | (local) | llama3 |

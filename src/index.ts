@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import * as dotenv from "dotenv";
+dotenv.config();
+
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as readline from "readline";
@@ -102,7 +105,7 @@ async function loadProjectContext(rootDir: string): Promise<string> {
 }
 
 let provider: LLMProvider = "groq";
-let model = "llama-3.1-70b-versatile";
+let model = "groq/compound";
 let customBaseUrl = "";
 let apiKey = "";
 let demoMode = false;

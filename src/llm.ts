@@ -40,7 +40,7 @@ const PROVIDER_CONFIGS: Record<LLMProvider, { baseUrl: string; defaultModel: str
   },
   groq: {
     baseUrl: "https://api.groq.com/openai/v1",
-    defaultModel: "llama-3.1-70b-versatile",
+    defaultModel: "groq/compound",
   },
   huggingface: {
     baseUrl: "https://api-inference.huggingface.co",
@@ -244,7 +244,7 @@ export function getEnvApiKey(provider: LLMProvider): string | undefined {
 
 export function listProviders(): { name: string; defaultModel: string }[] {
   return [
-    { name: "groq", defaultModel: "llama-3.1-70b-versatile" },
+    { name: "groq", defaultModel: "groq/compound" },
     { name: "ollama", defaultModel: "llama3" },
     { name: "openai", defaultModel: "gpt-4o-mini" },
     { name: "anthropic", defaultModel: "claude-3-haiku-20240307" },
