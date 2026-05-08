@@ -1,5 +1,85 @@
 import { Tool, ToolCall } from "./tools.js";
 
+export type ModelMode = "schema" | "native";
+
+export interface ModelConfig {
+  model: string;
+  mode: ModelMode;
+  description?: string;
+}
+
+export const OPENROUTER_MODELS: ModelConfig[] = [
+  { model: "openrouter/free", mode: "schema", description: "Supports strict JSON schema" },
+  { model: "nvidia/nemotron-3-super-120b-a12b:free", mode: "schema", description: "Supports strict JSON schema" },
+  { model: "qwen/qwen3-next-80b-a3b-instruct:free", mode: "schema", description: "Supports strict JSON schema" },
+  { model: "minimax/minimax-m2.5:free", mode: "native", description: "Native tool calling" },
+  { model: "tencent/hy3-preview:free", mode: "native", description: "Native tool calling" },
+];
+
+export const SCHEMAS_MODELS = new Set(OPENROUTER_MODELS.filter(m => m.mode === "schema").map(m => m.model));
+
+export interface SchemaToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface SchemaResponse {
+  status: "continue" | "finished" | "error" | "ask_user";
+  content: string;
+  tool_calls?: SchemaToolCall[];
+  version: "1.0";
+}
+
+export const SCHEMA_JSON = {
+  type: "object" as const,
+  properties: {
+    status: {
+      type: "string" as const,
+      enum: ["continue", "finished", "error", "ask_user"],
+      description: "Whether to continue the agent loop or finish",
+    },
+    content: {
+      type: "string" as const,
+      description: "Text response to display to the user",
+    },
+    tool_calls: {
+      type: "array" as const,
+      description: "Tools to call with arguments",
+      items: {
+        type: "object" as const,
+        properties: {
+          id: { type: "string" as const, description: "Unique call identifier" },
+          name: { type: "string" as const, description: "Tool name to execute" },
+          arguments: { type: "object" as const, description: "Arguments for the tool" },
+        },
+        required: ["id", "name", "arguments"],
+      },
+    },
+    version: { type: "string" as const, const: "1.0" as const },
+  },
+  required: ["status", "content", "version"],
+};
+
+export function parseSchemaResponse(content: string): SchemaResponse | null {
+  let jsonStr = content.trim();
+  const jsonMatch = jsonStr.match(/```json\s*([\s\S]*?)\s*```/);
+  if (jsonMatch) {
+    jsonStr = jsonMatch[1];
+  } else {
+    const codeMatch = jsonStr.match(/```\s*([\s\S]*?)\s*```/);
+    if (codeMatch) jsonStr = codeMatch[1];
+  }
+  try {
+    const parsed = JSON.parse(jsonStr);
+    // Accept if status + version present (tool_calls can exist even if content truncated)
+    if (parsed.status && parsed.version) {
+      return parsed as SchemaResponse;
+    }
+  } catch {}
+  return null;
+}
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -52,7 +132,7 @@ const PROVIDER_CONFIGS: Record<LLMProvider, { baseUrl: string; defaultModel: str
   },
   openrouter: {
     baseUrl: "https://openrouter.ai/api/v1",
-    defaultModel: "minimax/minimax-m2.5:free",
+    defaultModel: "openrouter/free",
   },
 };
 
@@ -128,10 +208,29 @@ async function chatOpenAI(messages: ChatMessage[], cfg: LLMConfig): Promise<Chat
     throw new Error("OpenAI requires API key. Set OPENAI_API_KEY env var.");
   }
 
+  const useSchema = cfg.baseUrl?.includes("openrouter.ai") && SCHEMAS_MODELS.has(cfg.model);
+
   const payload: Record<string, unknown> = {
     model: cfg.model,
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
   };
+
+  // Add strict JSON schema ONLY for openrouter/free (supports structured_outputs)
+  if (useSchema) {
+    Object.assign(payload, {
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "agent_response",
+          strict: true,
+          schema: SCHEMA_JSON,
+        },
+      },
+      provider: {
+        require_parameters: true,
+      },
+    });
+  }
 
   if (cfg.tools && cfg.tools.length > 0) {
     payload.tools = cfg.tools.map((t) => ({
@@ -167,19 +266,34 @@ async function chatOpenAI(messages: ChatMessage[], cfg: LLMConfig): Promise<Chat
     throw new Error(`OpenAI error: ${res.status} ${err}`);
   }
 
-  const data: any = await res.json();
+const data: any = await res.json();
   
   const assistantMsg = data.choices?.[0]?.message;
-  const toolCalls = assistantMsg?.tool_calls?.map((tc: any) => ({
+  
+  // For native tool calling (non-schema models)
+  let toolCalls = assistantMsg?.tool_calls?.map((tc: any) => ({
     id: tc.id,
     name: tc.function.name,
     arguments: JSON.parse(tc.function.arguments),
-  }));
+  })) || [];
+  
+  // For schema mode, parse tool_calls from content JSON
+  const contentStr = assistantMsg?.content || "";
+  if (useSchema && toolCalls.length === 0 && contentStr) {
+    const schemaResp = parseSchemaResponse(contentStr);
+    if (schemaResp?.tool_calls) {
+      toolCalls = schemaResp.tool_calls.map((tc, i) => ({
+        id: tc.id || `call_${i}`,
+        name: tc.name,
+        arguments: tc.arguments,
+      }));
+    }
+  }
 
   return {
     message: {
       role: "assistant",
-      content: assistantMsg?.content || "",
+      content: contentStr,
     },
     done: true,
     toolCalls,
@@ -285,7 +399,7 @@ export function getEnvApiKey(provider: LLMProvider): string | undefined {
 
 export function listProviders(): { name: string; defaultModel: string }[] {
   return [
-    { name: "openrouter", defaultModel: "minimax/minimax-m2.5:free" },
+    { name: "openrouter", defaultModel: "openrouter/free" },
     { name: "groq", defaultModel: "llama-3.3-70b-versatile" },
     { name: "ollama", defaultModel: "llama3" },
     { name: "openai", defaultModel: "gpt-4o-mini" },
