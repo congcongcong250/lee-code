@@ -1,7 +1,7 @@
 export interface Tool {
   name: string;
   description: string;
-  parameters?: {
+  parameters: {
     type: "object";
     properties: Record<string, { type: string; description?: string }>;
     required?: string[];
@@ -32,8 +32,8 @@ export function getTool(name: string): ToolFunction | undefined {
   return toolRegistry[name];
 }
 
-export function listTools(): string[] {
-  return Object.keys(toolRegistry);
+export function listTools(): Record<string, ToolFunction> {
+  return { ...toolRegistry };
 }
 
 export function getToolsSchema(): Tool[] {
@@ -42,4 +42,8 @@ export function getToolsSchema(): Tool[] {
     description: `Tool: ${name}`,
     parameters: { type: "object", properties: {} },
   }));
+}
+
+export function clearTools(): void {
+  Object.keys(toolRegistry).forEach(k => delete toolRegistry[k]);
 }

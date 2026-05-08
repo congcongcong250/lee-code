@@ -8,8 +8,9 @@ import * as path from "path";
 import * as readline from "readline";
 import fg from "fast-glob";
 import { spawn } from "child_process";
-import { chat, ChatMessage, LLMProvider, getEnvApiKey, listProviders } from "./llm.js";
-import { registerTool, Tool, ToolCall, ToolResult, getTool } from "./tools.js";
+import { chat, ChatMessage, LLMProvider, getEnvApiKey, listProviders, ChatResponse } from "./llm.js";
+import { registerTool, Tool, ToolResult, getTool, listTools, clearTools } from "./tools.js";
+import { ToolCall } from "./tools.js";
 
 interface FileOperationResult {
   success: boolean;
@@ -67,7 +68,6 @@ interface CommandResult {
   success: boolean;
   stdout?: string;
   stderr?: string;
-  exitCode?: number;
   error?: string;
 }
 
@@ -79,8 +79,8 @@ function runCommand(command: string, args: string[] = []): Promise<CommandResult
     child.stdout?.on("data", (data) => { stdout += data.toString(); });
     child.stderr?.on("data", (data) => { stderr += data.toString(); });
     const timer = setTimeout(() => { child.kill(); resolve({ success: false, stdout, stderr, error: "Command timed out" }); }, 60000);
-    child.on("close", (code) => { clearTimeout(timer); resolve({ success: code === 0, stdout, stderr, exitCode: code || undefined }); });
-    child.on("error", (error) => { clearTimeout(timer); resolve({ success: false, stdout, stderr, error: error.message }); });
+    child.on("close", (code) => { clearTimeout(timer); resolve({ success: code === 0, stdout, stderr }); });
+    child.on("error", (error) => { clearTimeout(timer); resolve({ success: false, stdout, stderr, error: (error as Error).message }); });
   });
 }
 
@@ -105,14 +105,68 @@ async function loadProjectContext(rootDir: string): Promise<string> {
   return output;
 }
 
-let provider: LLMProvider = "groq";
-let model = "llama-3.3-70b-versatile";
-let customBaseUrl = "";
-let apiKey = "";
-let demoMode = false;
+// === FUZYY TOOL PARSING ===
+function fuzzyMatch(a: string, b: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[_-]/g, "").replace(/\s+/g, "");
+  return norm(a).includes(norm(b)) || norm(b).includes(norm(a));
+}
 
+function parseToolCallsFromText(text: string): ToolCall[] {
+  const calls: ToolCall[] = [];
+  const toolNames = Object.keys(listTools());
+  
+  // Match [TOOL_CALL]{tool => "name" args => {...}} format
+  const blockRegex = /\[TOOL_CALL\]\s*\{tool\s*=>\s*"(\w+)".*?args\s*=>\s*(\{[^}]+\})\}/gi;
+  let blockMatch: RegExpExecArray | null;
+  const blockRe = /\[TOOL_CALL\]\s*\{tool\s*=>\s*"(\w+)".*?args\s*=>\s*(\{[^}]+\})\}/gi;
+  while ((blockMatch = blockRe.exec(text)) !== null) {
+    const toolName = blockMatch[1];
+    const matchedTool = toolNames.find(t => fuzzyMatch(t, toolName));
+    if (matchedTool) {
+      const argsStr = blockMatch[2];
+      const args: Record<string, unknown> = {};
+      const argRe = /--(\w+)\s*:\s*"([^"]*)"/g;
+      let argMatch: RegExpExecArray | null;
+      while ((argMatch = argRe.exec(argsStr)) !== null) {
+        args[argMatch[1]] = argMatch[2];
+      }
+      if (Object.keys(args).length > 0) {
+        calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: args });
+      }
+    }
+  }
+  
+  // Match `tool: value` format  
+  const inlineRe = /`(\w+):\s*(.+?)`/g;
+  let inlineMatch: RegExpExecArray | null;
+  while ((inlineMatch = inlineRe.exec(text)) !== null) {
+    const toolArg = inlineMatch[1];
+    const toolVal = inlineMatch[2];
+    if (toolArg) {
+      const matchedTool = toolNames.find(t => fuzzyMatch(t, toolArg));
+      if (matchedTool) {
+        calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: { value: toolVal } });
+      }
+    }
+  }
+  
+  // Also match plain tool names in text
+  for (const toolName of toolNames) {
+    const toolRegex = new RegExp(`\\b${toolName}\\b`, "gi");
+    if (toolRegex.test(text)) {
+      const existingCall = calls.find(c => c.name === toolName);
+      if (!existingCall) {
+        calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: toolName, arguments: {} });
+      }
+    }
+  }
+  
+  return calls;
+}
+
+// === REGISTER TOOLS ===
 registerTool("readFile", async (args) => {
-  const { path: filePath } = args;
+  const { path: filePath } = args as { path?: string };
   try {
     const content = await fs.readFile(filePath as string, "utf-8");
     return { success: true, result: content };
@@ -122,7 +176,7 @@ registerTool("readFile", async (args) => {
 });
 
 registerTool("searchFiles", async (args) => {
-  const { pattern } = args;
+  const { pattern } = args as { pattern?: string };
   try {
     const files = await fg(pattern as string, { absolute: true, onlyFiles: true });
     return { success: true, result: files.join("\n") };
@@ -132,20 +186,8 @@ registerTool("searchFiles", async (args) => {
 });
 
 registerTool("runCommand", async (args) => {
-  const { command } = args;
-  return new Promise((resolve) => {
-    const child = spawn(command as string, [], { cwd: process.cwd(), shell: true });
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.on("data", (d) => { stdout += d.toString(); });
-    child.stderr?.on("data", (d) => { stderr += d.toString(); });
-    const timer = setTimeout(() => { child.kill(); resolve({ success: false, error: "Timeout" }); }, 60000);
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ success: code === 0, result: stdout, error: stderr || undefined });
-    });
-    child.on("error", (e) => { clearTimeout(timer); resolve({ success: false, error: (e as Error).message }); });
-  });
+  const { command } = args as { command?: string };
+  return runCommand(command as string);
 });
 
 const tools: Tool[] = [
@@ -166,64 +208,81 @@ const tools: Tool[] = [
   },
 ];
 
+// === STATE ===
+let provider: LLMProvider = "groq";
+let model = "llama-3.3-70b-versatile";
+let customBaseUrl = "";
+let apiKey = "";
+
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
 function promptQuestion(question: string): Promise<string> {
   return new Promise((resolve) => { rl.question(question, (answer) => { resolve(answer); }); });
 }
 
-async function getLLMResponse(userInput: string, messages: ChatMessage[]): Promise<string> {
+// === AGENTIC LOOP ===
+async function getLLMResponse(userInput: string, history: ChatMessage[]): Promise<string> {
   const context = await loadProjectContext(process.cwd());
   
-  const systemPrompt = `You are lee-code, a CLI coding assistant. You help users with software engineering tasks.
+  const systemPrompt = `You are lee-code, a CLI coding assistant.
 
-You have access to these tools:
-- readFile(path): Read file contents
-- searchFiles(pattern): Find files using glob pattern
-- runCommand(command): Execute shell commands
+You have these tools:
+- readFile(path): Read a file
+- searchFiles(pattern): Find files using glob 
+- runCommand(command): Run a shell command
+
+IMPORTANT: When you need to use a tool, call it properly. If the user asks about code, search or read files first.
 
 Project context:
 ${context}
 
-When user asks coding tasks:
-1. Use readFile to explore code
-2. Use searchFiles to find relevant files
-3. Use runCommand to build/test
-4. Provide working code solution
+Respond concisely. Use tools when needed.`;
 
-IMPORTANT: Use tool_calls to execute actions. Format your response as JSON tool call when needed.`;
-
-  async function callLLM(history: ChatMessage[]): Promise<any> {
-    const cfg: any = { provider, model, tools };
-    if (customBaseUrl) cfg.baseUrl = customBaseUrl;
-    if (provider === "openai" || provider === "anthropic" || provider === "groq" || provider === "huggingface" || provider === "openrouter") {
-      cfg.apiKey = apiKey || getEnvApiKey(provider);
-    }
-    return chat(history, cfg);
-  }
-
-  let history: ChatMessage[] = [
+  // Build initial messages
+  let messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
-    ...messages,
+    ...history,
+    { role: "user", content: userInput },
   ];
 
+  // Agentic loop: max 5 iterations
   for (let i = 0; i < 5; i++) {
     try {
-      const response = await callLLM(history);
+      const cfg: any = { provider, model, tools };
+      if (customBaseUrl) cfg.baseUrl = customBaseUrl;
+      if (["openai", "anthropic", "groq", "huggingface", "openrouter"].includes(provider)) {
+        cfg.apiKey = apiKey || getEnvApiKey(provider);
+      }
       
-      if (response.toolCalls && response.toolCalls.length > 0) {
-        for (const tc of response.toolCalls) {
+      const response: ChatResponse = await chat(messages, cfg);
+      
+      // Check for API tool calls
+      let toolCalls = response.toolCalls || [];
+      
+      // If no API tool calls, parse from text (fuzzy)
+      if (toolCalls.length === 0) {
+        toolCalls = parseToolCallsFromText(response.message.content);
+      }
+      
+      if (toolCalls.length > 0) {
+        // Execute tool calls
+        for (const tc of toolCalls) {
           const fn = getTool(tc.name);
           if (fn) {
             const result = await fn(tc.arguments);
-            const toolMsg = `{tool_result} ${tc.name}: ${result.success ? result.result : result.error}`;
-            history.push({ role: "assistant", content: `Calling tool: ${tc.name}` });
-            history.push({ role: "user", content: toolMsg });
+            const toolMsg = result.success 
+              ? `Tool ${tc.name} result: ${result.result}`
+              : `Tool ${tc.name} error: ${result.error}`;
+            
+            messages.push({ role: "assistant", content: response.message.content });
+            messages.push({ role: "user", content: toolMsg });
           } else {
-            history.push({ role: "user", content: `{error} Unknown tool: ${tc.name}` });
+            messages.push({ role: "user", content: `Unknown tool: ${tc.name}` });
           }
         }
+        // Continue loop with tool results
       } else {
+        // No tool calls - return the response
         return response.message.content;
       }
     } catch (error) {
@@ -238,19 +297,13 @@ async function startInteractive() {
   console.log("");
   console.log("╔═══════════════════════════════════════════════════════╗");
   console.log("║              lee-code v1.0.0 - AI Coding Assistant       ║");
-  console.log("╚═══════════════════════════════════════════════════════════════╝");
+  console.log("╚═══════════════════════════════════════════════════════╝");
   console.log("");
-  console.log(`Provider: ${provider}${model ? ` (${model})` : ""}`);
-  console.log("Commands:");
-  console.log("  :quit, :q      Exit the session");
-  console.log("  :help, :h      Show available commands");
-  console.log("  :clear, :c    Clear the screen");
-  console.log("  :provider     Change LLM provider");
-  console.log("  :files        List project files");
-  console.log("  :context      Show project context");
+  console.log(`Provider: ${provider} (${model})`);
+  console.log("Commands: :quit, :help, :clear, :provider, :files, :context");
   console.log("");
 
-  const history: ChatMessage[] = [];
+  let history: ChatMessage[] = [];
   let running = true;
 
   while (running) {
@@ -263,63 +316,33 @@ async function startInteractive() {
       console.log("Goodbye!");
       process.exit(0);
     } else if (cmd === ":help" || cmd === ":h") {
-      console.log("");
-      console.log("Available commands:");
-      console.log("  :quit, :q       Exit");
-      console.log("  :help, :h       Show help");
-      console.log("  :clear, :c     Clear screen");
-      console.log("  :provider       Change LLM provider");
-      console.log("  :files          List files");
-      console.log("  :context        Show CLAUDE.md / MEMORY.md");
-      console.log("  read <file>     Read a file");
-      console.log("  search <glob>   Search files with glob");
-      console.log("  run <cmd>       Run a shell command");
-      console.log("");
+      console.log("Commands: :quit, :help, :clear, :provider, :files, :context");
+      console.log("         read <file>, search <pattern>, run <cmd>");
     } else if (cmd === ":clear" || cmd === ":c") {
       console.clear();
     } else if (cmd === ":provider") {
       const providers = listProviders();
-      console.log("\nAvailable providers:");
-      providers.forEach((p, i) => console.log(`  ${i + 1}. ${p.name} (default: ${p.defaultModel})`));
-      const sel = await promptQuestion("Select provider (1-5): ");
+      console.log("\nProviders:");
+      providers.forEach((p, i) => console.log(`  ${i + 1}. ${p.name} (${p.defaultModel})`));
+      const sel = await promptQuestion("Select: ");
       const idx = parseInt(sel) - 1;
       if (idx >= 0 && idx < providers.length) {
         provider = providers[idx].name as LLMProvider;
         model = providers[idx].defaultModel;
-        apiKey = "";
-        console.log(`Provider set to: ${provider} (${model})`);
-        if (!getEnvApiKey(provider)) {
-          console.log("Note: Set API key with :apikey or via env var");
-        }
+        console.log(`Provider: ${provider} (${model})`);
       }
-    } else if (cmd === ":apikey") {
-      const key = await promptQuestion("Enter API key: ");
-      apiKey = key.trim();
-      console.log("API key saved for this session");
     } else if (cmd === ":files") {
       const files = await searchFiles("**/*");
       console.log(`Found ${files.length} files`);
-      files.slice(0, 20).forEach((f) => console.log(f));
+      files.slice(0, 20).forEach(f => console.log(f));
       if (files.length > 20) console.log(`... and ${files.length - 20} more`);
     } else if (cmd === ":context") {
       const ctx = await loadProjectContext(process.cwd());
       console.log(ctx);
-    } else if (cmd.startsWith("read ")) {
-      const filePath = cmd.slice(5);
-      const result = await readFile(filePath);
-      console.log(result.success ? result.data : `Error: ${result.error}`);
-    } else if (cmd.startsWith("search ")) {
-      const files = await searchFiles(cmd.slice(7));
-      files.length ? files.forEach((f) => console.log(f)) : console.log("No files found");
-    } else if (cmd.startsWith("run ")) {
-      const result = await runCommand(cmd.slice(4));
-      if (result.stdout) process.stdout.write(result.stdout);
-      if (result.stderr) process.stderr.write(result.stderr);
-      if (!result.success && result.error) console.error(`Error: ${result.error}`);
     } else if (input.trim()) {
-      history.push({ role: "user", content: input });
       const response = await getLLMResponse(input, history);
       console.log(response);
+      history.push({ role: "user", content: input });
       history.push({ role: "assistant", content: response });
     }
   }
@@ -342,27 +365,15 @@ async function main() {
     case "search":
     case "run":
     case "context":
+    case "help":
     case "interactive":
-    case "shell":
-    case "repl":
     case "i":
-    case "help": {
       if (command === "help") {
-        console.log("lee-code v1.0.0 - AI Coding Assistant");
-        console.log("");
-        console.log("Usage:");
-        console.log("  lee-code                    Start interactive mode");
-        console.log("  lee-code read <file>       Read a file");
-        console.log("  lee-code write <file> <content>  Write to a file");
-        console.log("  lee-code edit <file> <old> <new>  Edit a file");
-        console.log("  lee-code search <pattern>  Search files with glob");
-        console.log("  lee-code run <command>    Run a shell command");
-        console.log("  lee-code context           Load project context");
-        console.log("  lee-code help             Show help");
+        console.log("lee-code v1.0.0");
+        console.log("Usage: lee-code [read|write|edit|search|run|context|help|i]");
       } else if (command === "context") {
-        const ctx = await loadProjectContext(process.cwd());
-        console.log(ctx);
-      } else if (command === "interactive" || command === "shell" || command === "repl" || command === "i") {
+        console.log(await loadProjectContext(process.cwd()));
+      } else if (command === "interactive" || command === "i") {
         await startInteractive();
       } else if (command === "read") {
         if (args.length < 2) { console.error("Usage: lee-code read <file>"); process.exit(1); }
@@ -372,17 +383,17 @@ async function main() {
       } else if (command === "write") {
         if (args.length < 3) { console.error("Usage: lee-code write <file> <content>"); process.exit(1); }
         const result = await writeFile(args[1], args[2]);
-        console.log(result.success ? "File written" : result.error);
+        console.log(result.success ? "OK" : result.error);
         if (!result.success) process.exit(1);
       } else if (command === "edit") {
         if (args.length < 4) { console.error("Usage: lee-code edit <file> <old> <new>"); process.exit(1); }
         const result = await editFile(args[1], args[2], args[3]);
-        console.log(result.success ? "File edited" : result.error);
+        console.log(result.success ? "OK" : result.error);
         if (!result.success) process.exit(1);
       } else if (command === "search") {
         if (args.length < 2) { console.error("Usage: lee-code search <pattern>"); process.exit(1); }
         const files = await searchFiles(args[1]);
-        files.forEach((f) => console.log(f));
+        files.forEach(f => console.log(f));
       } else if (command === "run") {
         if (args.length < 2) { console.error("Usage: lee-code run <command>"); process.exit(1); }
         const result = await runCommand(args[1]);
@@ -391,13 +402,10 @@ async function main() {
         if (!result.success) process.exit(1);
       }
       break;
-    }
-
     default:
-      console.error(`Unknown command: ${command}`);
-      console.error("Run 'lee-code help' for usage");
+      console.error(`Unknown: ${command}. Run 'lee-code help'`);
       process.exit(1);
   }
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+main().catch(err => { console.error(err); process.exit(1); });
