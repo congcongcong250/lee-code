@@ -177,7 +177,25 @@ function parseToolCallsFromText(text: string): ToolCall[] {
     }
   }
   
-  // 4. Match `tool: value` format  
+  // 4. Match XML self-closing or paired tag format: <toolName(key: "value")></toolName>
+  const format4Re = /<(\w+)\((\w+):\s*"([^"]+)"[^)]*\)\/?>|<(\w+)\((\w+):\s*"([^"]+)"[^)]*\)\s*<\/\w+>/gi;
+  let match4: RegExpExecArray | null;
+  while ((match4 = format4Re.exec(text)) !== null) {
+    const toolName = match4[1] || match4[4];
+    const paramName = match4[2] || match4[5];
+    const paramValue = match4[3] || match4[6];
+    const matchedTool = toolNames.find(t => fuzzyMatch(t, toolName!));
+    if (matchedTool && paramName && paramValue) {
+      const existingCall = calls.find(c => c.name === matchedTool);
+      if (existingCall) {
+        existingCall.arguments[paramName] = paramValue;
+      } else {
+        calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: { [paramName]: paramValue } });
+      }
+    }
+  }
+
+  // 4b. Match XML paired tags: <searchFiles>\n<parameter name="pattern">...  
   const inlineRe = /`(\w+):\s*(.+?)`/g;
   let inlineMatch: RegExpExecArray | null;
   while ((inlineMatch = inlineRe.exec(text)) !== null) {
