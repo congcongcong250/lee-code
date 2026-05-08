@@ -244,15 +244,15 @@ async function chatHuggingFace(messages: ChatMessage[], cfg: LLMConfig): Promise
 export function getEnvApiKey(provider: LLMProvider): string | undefined {
   switch (provider) {
     case "openrouter":
-      return process.env.OPENROUTER_API_KEY || process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
+      return process.env.OPENROUTER_API_KEY;
     case "openai":
       return process.env.OPENAI_API_KEY;
     case "groq":
-      return process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
+      return process.env.GROQ_API_KEY;
     case "anthropic":
       return process.env.ANTHROPIC_API_KEY;
     case "huggingface":
-      return process.env.HF_TOKEN || process.env.HUGGINGFACE_API_KEY;
+      return process.env.HF_TOKEN;
     default:
       return undefined;
   }
@@ -261,7 +261,7 @@ export function getEnvApiKey(provider: LLMProvider): string | undefined {
 export function listProviders(): { name: string; defaultModel: string }[] {
   return [
     { name: "openrouter", defaultModel: "minimax/minimax-m2.5:free" },
-    { name: "groq", defaultModel: "llama-3.1-70b-versatile" },
+    { name: "groq", defaultModel: "llama-3.3-70b-versatile" },
     { name: "ollama", defaultModel: "llama3" },
     { name: "openai", defaultModel: "gpt-4o-mini" },
     { name: "anthropic", defaultModel: "claude-3-haiku-20240307" },

@@ -104,8 +104,8 @@ async function loadProjectContext(rootDir: string): Promise<string> {
   return output;
 }
 
-let provider: LLMProvider = "openrouter";
-let model = "minimax/minimax-m2.5:free";
+let provider: LLMProvider = "groq";
+let model = "llama-3.3-70b-versatile";
 let customBaseUrl = "";
 let apiKey = "";
 let demoMode = false;
