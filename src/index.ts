@@ -11,7 +11,7 @@ import { spawn } from "child_process";
 import { chat, ChatMessage, LLMProvider, getEnvApiKey, listProviders, ChatResponse } from "./llm.js";
 import { registerTool, Tool, ToolResult, getTool, listTools, clearTools } from "./tools.js";
 import { ToolCall } from "./tools.js";
-import { debug, info, warn as logWarn, error as logError, setLogLevel, saveLogs } from "./debug.js";
+import { debug, info, warn as logWarn, error as logError, setLogLevel, setVerboseMode, saveLogs, logLLM, saveLLMLogs, getSessionIdValue } from "./debug.js";
 
 interface FileOperationResult {
   success: boolean;
@@ -252,14 +252,27 @@ Respond concisely. Use tools when needed.`;
     try {
       debug(`Iteration ${i + 1}: Calling LLM`, { provider, model, toolsCount: tools.length });
       
+      // Log user message
+      logLLM("user", userInput, { provider, model, iteration: i + 1 });
+      
+      // Log messages being sent (truncate for readability)
+      const msgsForLog = messages.map(m => ({ role: m.role, content: m.content.slice(0, 200) }));
+      logLLM("system", JSON.stringify(msgsForLog), { provider, model, iteration: i + 1 });
+      
       const cfg: any = { provider, model, tools };
       if (customBaseUrl) cfg.baseUrl = customBaseUrl;
       if (["openai", "anthropic", "groq", "huggingface", "openrouter"].includes(provider)) {
         cfg.apiKey = apiKey || getEnvApiKey(provider);
       }
       
+      const startTime = Date.now();
       const response: ChatResponse = await chat(messages, cfg);
-      debug(`Iteration ${i + 1}: LLM responded`, { contentLength: response.message.content.length, hasToolCalls: !!response.toolCalls });
+      const duration = Date.now() - startTime;
+      
+      const respContent = response.message.content;
+      logLLM("assistant", respContent, { provider, model, iteration: i + 1, duration });
+      
+      debug(`Iteration ${i + 1}: LLM responded`, { contentLength: respContent.length, hasToolCalls: !!response.toolCalls, duration });
       
       // Check for API tool calls
       let toolCalls = response.toolCalls || [];
@@ -274,16 +287,20 @@ Respond concisely. Use tools when needed.`;
         // Execute tool calls
         for (const tc of toolCalls) {
           debug(`Executing tool`, { name: tc.name, args: tc.arguments });
+          logLLM("tool", JSON.stringify(tc), { provider, model, iteration: i + 1, toolCalls: tc.name });
+          
           const fn = getTool(tc.name);
           if (fn) {
             const result = await fn(tc.arguments);
-            debug(`Tool result`, { name: tc.name, success: result.success });
-            const toolMsg = result.success 
+            const resultStr = result.success 
               ? `Tool ${tc.name} result: ${result.result}`
               : `Tool ${tc.name} error: ${result.error}`;
             
+            logLLM("tool_result", resultStr, { provider, model, iteration: i + 1, toolCalls: tc.name });
+            debug(`Tool result`, { name: tc.name, success: result.success });
+            
             messages.push({ role: "assistant", content: response.message.content });
-            messages.push({ role: "user", content: toolMsg });
+            messages.push({ role: "user", content: resultStr });
           } else {
             messages.push({ role: "user", content: `Unknown tool: ${tc.name}` });
           }
@@ -324,21 +341,31 @@ async function startInteractive() {
     if (cmd === ":quit" || cmd === ":q") {
       running = false;
       console.log("Goodbye!");
+      // Auto-save logs on exit
+      try {
+        const fn = saveLLMLogs();
+        console.log(`Logs saved to ${fn}`);
+      } catch {}
       process.exit(0);
     } else if (cmd === ":help" || cmd === ":h") {
       console.log("Commands: :quit, :help, :clear, :provider, :files, :context");
       console.log("         read <file>, search <pattern>, run <cmd>");
       console.log("         :logs, :logs save");
+    } else if (cmd === ":logs save verbose" || cmd === ":logs v") {
+      const filename = saveLLMLogs();
+      console.log(`Verbose logs saved to ${filename}`);
     } else if (cmd === ":logs save") {
       const filename = saveLogs();
       console.log(`Logs saved to ${filename}`);
-    } else if (cmd === ":logs") {
+    } else if (cmd === ":logs" || cmd === ":logs stats") {
       const logs = require("./debug.js").getLogs();
-      console.log(`Total logs: ${logs.length}`);
-      logs.slice(-10).forEach((l: any) => {
-        console.log(`${l.timestamp} [${l.level}] ${l.message}`);
+      const llmLogs = require("./debug.js").getLLMLogs();
+      console.log(`Session: ${getSessionIdValue()}`);
+      console.log(`Debug logs: ${logs.length}`);
+      console.log(`LLM logs: ${llmLogs.length}`);
+      llmLogs.slice(-5).forEach((l: any) => {
+        console.log(`  ${l.timestamp} [${l.role}] ${l.content?.slice(0, 60)}...`);
       });
-      console.clear();
     } else if (cmd === ":provider") {
       const providers = listProviders();
       console.log("\nProviders:");
@@ -378,6 +405,12 @@ async function main() {
   if (flags.includes('--debug') || flags.includes('-d')) {
     setLogLevel("debug");
     debug("Debug mode enabled");
+  }
+
+  // Handle --verbose flag
+  if (flags.includes('--verbose') || flags.includes('-v')) {
+    setVerboseMode(true);
+    debug("Verbose mode enabled - logging LLM requests/responses");
   }
 
   const isInteractive = commandArgs.length === 0 || commandArgs[0] === "i" || commandArgs[0] === "interactive";
