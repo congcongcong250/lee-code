@@ -1,5 +1,3 @@
-import { Tool } from "./tools";
-
 export type ModelMode = "schema" | "native";
 
 export interface ModelConfig {

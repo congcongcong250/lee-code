@@ -3,7 +3,6 @@
 import * as dotenv from "dotenv";
 dotenv.config();
 
-import * as readline from "readline";
 import { chat, ChatMessage, LLMProvider, getEnvApiKey, ChatResponse, OPENROUTER_MODELS, listProviders } from "./llm";
 import { getTool, listTools } from "./tools";
 import { debug, setLogLevel, setVerboseMode, logLLM, saveLLMLogs } from "./debug";
@@ -19,6 +18,7 @@ enableColors();
 const MAX_ITERATIONS = 10;
 
 export async function promptQuestion(question: string): Promise<string> {
+  const readline = await import("readline");
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(resolve => {
     rl.question(question, answer => {
@@ -146,7 +146,7 @@ async function startInteractive() {
   let running = true;
 
   while (running) {
-    const input = await promptQuestion(`${COLORS.cyan}❯ ${COLORS.reset}`);
+    const input = await promptQuestion("❯ ");
     console.log("");
     const cmd = input.trim().toLowerCase();
 
