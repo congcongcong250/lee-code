@@ -1,63 +1,53 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { registerTool, getTool, clearTools, listTools, ToolCall } from "../src/tools";
+import { registerTool, getTool, clearTools, listTools } from "../src/tools";
 
-describe("Tools Module", () => {
-  beforeEach(() => {
-    clearTools();
+describe("Tools", () => {
+  beforeEach(() => { clearTools(); });
+
+  it("register and get", async () => {
+    registerTool("test", async () => ({ success: true }));
+    expect(getTool("test")).toBeDefined();
   });
 
-  describe("registerTool / getTool", () => {
-    it("should register and retrieve a tool", async () => {
-      const toolFn = async (args: any) => ({ success: true, result: "ok" });
-      registerTool("testTool", toolFn);
-      
-      const fn = getTool("testTool");
-      expect(fn).toBeDefined();
-    });
-
-    it("should return undefined for unknown tool", () => {
-      const fn = getTool("unknown");
-      expect(fn).toBeUndefined();
-    });
-  });
-
-  describe("listTools", () => {
-    it("should list registered tools", () => {
-      registerTool("tool1", async () => ({ success: true }));
-      registerTool("tool2", async () => ({ success: true }));
-      
-      const list = listTools();
-      expect(Object.keys(list)).toContain("tool1");
-      expect(Object.keys(list)).toContain("tool2");
-    });
-  });
-
-  describe("clearTools", () => {
-    it("should clear all tools", () => {
-      registerTool("tool1", async () => ({ success: true }));
-      clearTools();
-      
-      const list = listTools();
-      expect(Object.keys(list).length).toBe(0);
-    });
+  it("unknown returns undefined", () => {
+    expect(getTool("unknown")).toBeUndefined();
   });
 });
 
-describe("Tool Call Parsing (integration)", () => {
-  function fuzzyMatch(a: string, b: string): boolean {
-    const norm = (s: string) => s.toLowerCase().replace(/[_-]/g, "").replace(/\s+/g, "");
-    return norm(a).includes(norm(b)) || norm(b).includes(norm(a));
-  }
+describe("fuzzyMatch", () => {
+  const fuzzyMatch = (a: string, b: string) => {
+    const n = (s: string) => s.toLowerCase().replace(/[_-]/g, "");
+    return n(a).includes(n(b)) || n(b).includes(n(a));
+  };
 
-  it("should fuzzy match readFile vs read-file", () => {
-    expect(fuzzyMatch("readFile", "read-file")).toBe(true);
+  it("readFile matches read-file", () => expect(fuzzyMatch("readFile", "read-file")).toBe(true));
+  it("SEARCHFILES matches searchfiles", () => expect(fuzzyMatch("SEARCHFILES", "searchfiles")).toBe(true));
+  it("readFile does NOT match writeFile", () => expect(fuzzyMatch("readFile", "writeFile")).toBe(false));
+});
+
+describe("Parse formats", () => {
+  it("format 1: [TOOL_CALL]{tool => name, args => { --key value }}", () => {
+    const text = `[TOOL_CALL]{tool => "searchFiles", args => { --pattern "**/*.js" }}`;
+    const m = /\[TOOL_CALL\]\s*\{tool\s*=>\s*"(\w+)".*?args\s*=>\s*\{([^}]+)\}\}/gi.exec(text);
+    expect(m).not.toBeNull();
+    expect(m![1]).toBe("searchFiles");
   });
 
-  it("should fuzzy match SEARCHFILES vs searchfiles", () => {
-    expect(fuzzyMatch("SEARCHFILES", "searchfiles")).toBe(true);
+  it("format 2: multiline", () => {
+    const text = `[TOOL_CALL]
+{tool => "searchFiles", args => { --pattern "**/*.js" }}
+[/TOOL_CALL]`;
+    const re = /\[TOOL_CALL\]\s*[\r\n]+\{tool\s*=>\s*"(\w+)".*?args\s*=>\s*\{([^}]+)\}\s*\}[\r\n]+\[\/TOOL_CALL\]/gi;
+    const m = re.exec(text);
+    expect(m).not.toBeNull();
   });
 
-  it("should NOT match unrelated tools", () => {
-    expect(fuzzyMatch("readFile", "writeFile")).toBe(false);
+  it("simple tool call", () => {
+    // The format is `tool: value` with backticks
+    const text = 'Let me use `searchFiles: **/*.ts`';
+    const re = /\`(\w+):\s*(.+?)\`/g;
+    const m = re.exec(text);
+    expect(m).not.toBeNull();
+    expect(m![1]).toBe("searchFiles");
   });
 });

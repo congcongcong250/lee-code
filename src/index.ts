@@ -116,20 +116,22 @@ function parseToolCallsFromText(text: string): ToolCall[] {
   const calls: ToolCall[] = [];
   const toolNames = Object.keys(listTools());
   
-  // Match [TOOL_CALL]{tool => "name" args => {...}} format
-  const blockRegex = /\[TOOL_CALL\]\s*\{tool\s*=>\s*"(\w+)".*?args\s*=>\s*(\{[^}]+\})\}/gi;
-  let blockMatch: RegExpExecArray | null;
-  const blockRe = /\[TOOL_CALL\]\s*\{tool\s*=>\s*"(\w+)".*?args\s*=>\s*(\{[^}]+\})\}/gi;
-  while ((blockMatch = blockRe.exec(text)) !== null) {
-    const toolName = blockMatch[1];
+  // 1. Match [TOOL_CALL]{tool => "name", args => { --key "value" }} format
+  const format1Re = /\[TOOL_CALL\]\s*\{tool\s*=>\s*"(\w+)".*?args\s*=>\s*\{([^}]+)\}\}/gi;
+  let match: RegExpExecArray | null;
+  while ((match = format1Re.exec(text)) !== null) {
+    const toolName = match[1];
     const matchedTool = toolNames.find(t => fuzzyMatch(t, toolName));
     if (matchedTool) {
-      const argsStr = blockMatch[2];
+      const argsStr = match[2];
       const args: Record<string, unknown> = {};
-      const argRe = /--(\w+)\s*:\s*"([^"]*)"/g;
+      // Match --key "value" or key "value"
+      const argRe = /--(\w+)\s+"([^"]+)"|(\w+)\s+"([^"]+)"/g;
       let argMatch: RegExpExecArray | null;
       while ((argMatch = argRe.exec(argsStr)) !== null) {
-        args[argMatch[1]] = argMatch[2];
+        const key = argMatch[1] || argMatch[3];
+        const val = argMatch[2] || argMatch[4];
+        if (key && val) args[key] = val;
       }
       if (Object.keys(args).length > 0) {
         calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: args });
@@ -137,28 +139,61 @@ function parseToolCallsFromText(text: string): ToolCall[] {
     }
   }
   
-  // Match `tool: value` format  
-  const inlineRe = /`(\w+):\s*(.+?)`/g;
-  let inlineMatch: RegExpExecArray | null;
-  while ((inlineMatch = inlineRe.exec(text)) !== null) {
-    const toolArg = inlineMatch[1];
-    const toolVal = inlineMatch[2];
-    if (toolArg) {
-      const matchedTool = toolNames.find(t => fuzzyMatch(t, toolArg));
-      if (matchedTool) {
-        calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: { value: toolVal } });
+  // 2. Match multiline [TOOL_CALL]...[/TOOL_CALL] block format
+  const format2Re = /\[TOOL_CALL\]\s*[\r\n]+\{tool\s*=>\s*"(\w+)".*?args\s*=>\s*\{([^}]+)\}\s*\}\s*\[\r\n]+\[\/TOOL_CALL\]/gi;
+  while ((match = format2Re.exec(text)) !== null) {
+    const toolName = match[1];
+    const matchedTool = toolNames.find(t => fuzzyMatch(t, toolName));
+    if (matchedTool && !calls.find(c => c.name === matchedTool)) {
+      const argsStr = match[2];
+      const args: Record<string, unknown> = {};
+      const argRe = /--(\w+)\s+"([^"]+)"|(\w+)\s+"([^"]+)"/g;
+      let argMatch: RegExpExecArray | null;
+      while ((argMatch = argRe.exec(argsStr)) !== null) {
+        const key = argMatch[1] || argMatch[3];
+        const val = argMatch[2] || argMatch[4];
+        if (key && val) args[key] = val;
+      }
+      if (Object.keys(args).length > 0) {
+        calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: args });
       }
     }
   }
   
-  // Also match plain tool names in text
+  // 3. Match XML-like <invoke><invokeName>...</invokeName> format
+  const format3Re = /<(invoke|iNvOkE)>\s*<(invokeName|iNvOkEnAmE)>(\w+)<\/(invokeName|iNvOkEnAmE)>\s*<(parameter|pArAmEtEr)\s+name="(\w+)">([^<]+)<\/(parameter|pArAmEtEr)>\s*<\/(invoke|iNvOkE)>/gi;
+  while ((match = format3Re.exec(text)) !== null) {
+    const toolName = match[3];
+    const paramName = match[5];
+    const paramValue = match[6];
+    const matchedTool = toolNames.find(t => fuzzyMatch(t, toolName));
+    if (matchedTool && paramName && paramValue) {
+      const existingCall = calls.find(c => c.name === matchedTool);
+      if (existingCall) {
+        existingCall.arguments[paramName] = paramValue;
+      } else {
+        calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: { [paramName]: paramValue } });
+      }
+    }
+  }
+  
+  // 4. Match `tool: value` format  
+  const inlineRe = /`(\w+):\s*(.+?)`/g;
+  let inlineMatch: RegExpExecArray | null;
+  while ((inlineMatch = inlineRe.exec(text)) !== null) {
+    const toolName = inlineMatch[1];
+    const toolValue = inlineMatch[2];
+    const matchedTool = toolNames.find(t => fuzzyMatch(t, toolName));
+    if (matchedTool && !calls.find(c => c.name === matchedTool)) {
+      calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: { value: toolValue } });
+    }
+  }
+  
+  // 5. Match plain tool names (fallback)
   for (const toolName of toolNames) {
     const toolRegex = new RegExp(`\\b${toolName}\\b`, "gi");
-    if (toolRegex.test(text)) {
-      const existingCall = calls.find(c => c.name === toolName);
-      if (!existingCall) {
-        calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: toolName, arguments: {} });
-      }
+    if (toolRegex.test(text) && !calls.find(c => c.name === toolName)) {
+      calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: toolName, arguments: {} });
     }
   }
   
