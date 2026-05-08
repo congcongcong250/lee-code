@@ -12,6 +12,7 @@ import { chat, ChatMessage, LLMProvider, getEnvApiKey, listProviders, ChatRespon
 import { registerTool, Tool, ToolResult, getTool, listTools, clearTools } from "./tools.js";
 import { ToolCall } from "./tools.js";
 import { debug, info, warn as logWarn, error as logError, setLogLevel, setVerboseMode, saveLogs, logLLM, saveLLMLogs, getSessionIdValue } from "./debug.js";
+import { parseToolCallsFromText, parseFunctionCalls } from "./toolParser.js";
 
 interface FileOperationResult {
   success: boolean;
@@ -106,129 +107,8 @@ async function loadProjectContext(rootDir: string): Promise<string> {
   return output;
 }
 
-// === FUZYY TOOL PARSING ===
-function fuzzyMatch(a: string, b: string): boolean {
-  const norm = (s: string) => s.toLowerCase().replace(/[_-]/g, "").replace(/\s+/g, "");
-  return norm(a).includes(norm(b)) || norm(b).includes(norm(a));
-}
-
-function parseToolCallsFromText(text: string): ToolCall[] {
-  const calls: ToolCall[] = [];
-  const toolNames = Object.keys(listTools());
-  
-  // 1. Match [TOOL_CALL]{tool => "name", args => { --key "value" }} format
-  const format1Re = /\[TOOL_CALL\]\s*\{tool\s*=>\s*"(\w+)".*?args\s*=>\s*\{([^}]+)\}\}/gi;
-  let match: RegExpExecArray | null;
-  while ((match = format1Re.exec(text)) !== null) {
-    const toolName = match[1];
-    const matchedTool = toolNames.find(t => fuzzyMatch(t, toolName));
-    if (matchedTool) {
-      const argsStr = match[2];
-      const args: Record<string, unknown> = {};
-      // Match --key "value" or key "value"
-      const argRe = /--(\w+)\s+"([^"]+)"|(\w+)\s+"([^"]+)"/g;
-      let argMatch: RegExpExecArray | null;
-      while ((argMatch = argRe.exec(argsStr)) !== null) {
-        const key = argMatch[1] || argMatch[3];
-        const val = argMatch[2] || argMatch[4];
-        if (key && val) args[key] = val;
-      }
-      if (Object.keys(args).length > 0) {
-        calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: args });
-      }
-    }
-  }
-  
-  // 2. Match multiline [TOOL_CALL]...[/TOOL_CALL] block format
-  const format2Re = /\[TOOL_CALL\]\s*[\r\n]+\{tool\s*=>\s*"(\w+)".*?args\s*=>\s*\{([^}]+)\}\s*\}\s*\[\r\n]+\[\/TOOL_CALL\]/gi;
-  while ((match = format2Re.exec(text)) !== null) {
-    const toolName = match[1];
-    const matchedTool = toolNames.find(t => fuzzyMatch(t, toolName));
-    if (matchedTool && !calls.find(c => c.name === matchedTool)) {
-      const argsStr = match[2];
-      const args: Record<string, unknown> = {};
-      const argRe = /--(\w+)\s+"([^"]+)"|(\w+)\s+"([^"]+)"/g;
-      let argMatch: RegExpExecArray | null;
-      while ((argMatch = argRe.exec(argsStr)) !== null) {
-        const key = argMatch[1] || argMatch[3];
-        const val = argMatch[2] || argMatch[4];
-        if (key && val) args[key] = val;
-      }
-      if (Object.keys(args).length > 0) {
-        calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: args });
-      }
-    }
-  }
-  
-  // 3. Match XML-like <invoke><invokeName>...</invokeName> format
-  const format3Re = /<(invoke|iNvOkE)>\s*<(invokeName|iNvOkEnAmE)>(\w+)<\/(invokeName|iNvOkEnAmE)>\s*<(parameter|pArAmEtEr)\s+name="(\w+)">([^<]+)<\/(parameter|pArAmEtEr)>\s*<\/(invoke|iNvOkE)>/gi;
-  while ((match = format3Re.exec(text)) !== null) {
-    const toolName = match[3];
-    const paramName = match[5];
-    const paramValue = match[6];
-    const matchedTool = toolNames.find(t => fuzzyMatch(t, toolName));
-    if (matchedTool && paramName && paramValue) {
-      const existingCall = calls.find(c => c.name === matchedTool);
-      if (existingCall) {
-        existingCall.arguments[paramName] = paramValue;
-      } else {
-        calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: { [paramName]: paramValue } });
-      }
-    }
-  }
-  
-  // 4. Match XML self-closing or paired tag format: <toolName(key: "value")></toolName>
-  const format4Re = /<(\w+)\((\w+):\s*"([^"]+)"[^)]*\)\/?>|<(\w+)\((\w+):\s*"([^"]+)"[^)]*\)\s*<\/\w+>/gi;
-  let match4: RegExpExecArray | null;
-  while ((match4 = format4Re.exec(text)) !== null) {
-    const toolName = match4[1] || match4[4];
-    const paramName = match4[2] || match4[5];
-    const paramValue = match4[3] || match4[6];
-    const matchedTool = toolNames.find(t => fuzzyMatch(t, toolName!));
-    if (matchedTool && paramName && paramValue) {
-      const existingCall = calls.find(c => c.name === matchedTool);
-      if (existingCall) {
-        existingCall.arguments[paramName] = paramValue;
-      } else {
-        calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: { [paramName]: paramValue } });
-      }
-    }
-  }
-
-  // 4b. Match simple XML content: <toolName>value</toolName>
-  const format4bRe = /<(\w+)>([^<]+)<\/\1>/gi;
-  let match4b: RegExpExecArray | null;
-  while ((match4b = format4bRe.exec(text)) !== null) {
-    const toolName = match4b[1];
-    const content = match4b[2].trim();
-    const matchedTool = toolNames.find(t => fuzzyMatch(t, toolName));
-    if (matchedTool && content && !calls.find(c => c.name === matchedTool)) {
-      calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: { value: content } });
-    }
-  }
-
-  // 5. Match backtick tool: value format  
-  const inlineRe = /`(\w+):\s*(.+?)`/g;
-  let inlineMatch: RegExpExecArray | null;
-  while ((inlineMatch = inlineRe.exec(text)) !== null) {
-    const toolName = inlineMatch[1];
-    const toolValue = inlineMatch[2];
-    const matchedTool = toolNames.find(t => fuzzyMatch(t, toolName));
-    if (matchedTool && !calls.find(c => c.name === matchedTool)) {
-      calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: matchedTool, arguments: { value: toolValue } });
-    }
-  }
-  
-  // 5. Match plain tool names (fallback)
-  for (const toolName of toolNames) {
-    const toolRegex = new RegExp(`\\b${toolName}\\b`, "gi");
-    if (toolRegex.test(text) && !calls.find(c => c.name === toolName)) {
-      calls.push({ id: `call_${Date.now()}_${Math.random()}`, name: toolName, arguments: {} });
-    }
-  }
-  
-  return calls;
-}
+// === TOOL PARSING (delegate to toolParser module) ===
+// Keep local fuzzyMatch for backwards compatibility - re-exported from toolParser
 
 // === REGISTER TOOLS ===
 registerTool("readFile", async (args) => {
@@ -345,9 +225,14 @@ Respond concisely. Use tools when needed.`;
       // Check for API tool calls
       let toolCalls = response.toolCalls || [];
       
-      // If no API tool calls, parse from text (fuzzy)
+      // Try to parse function calls from vLLM/SGLang server format
       if (toolCalls.length === 0) {
-        toolCalls = parseToolCallsFromText(response.message.content);
+        toolCalls = parseFunctionCalls(response);
+      }
+      
+      // If no API tool calls, parse from text (fuzzy fallback)
+      if (toolCalls.length === 0) {
+        toolCalls = parseToolCallsFromText(response.message.content, Object.keys(listTools()));
         debug(`Iteration ${i + 1}: Fuzzy parsed tool calls`, { count: toolCalls.length, parsed: toolCalls.map(t => t.name) });
       }
       

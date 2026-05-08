@@ -8,8 +8,10 @@ lee-code is a CLI coding assistant inspired by Claude Code. It's designed to be 
 - Executes shell commands
 - Provides an interactive REPL with history
 - Connects to LLMs (Groq, OpenAI, Anthropic, OpenRouter, Ollama, HuggingFace)
-- Supports tool calling with fuzzy parsing of various LLM output formats
+- Supports tool calling with vLLM/SGLang server-side parsing or fallback fuzzy client parsing
 - Logs all LLM interactions for debugging
+
+**Architecture Strategy**: Use vLLM or SGLang as local server when available for proper tool calling. Fall back to client-side fuzzy parsing for remote APIs that don't support function_calling.
 
 ## Entry Template
 
@@ -187,3 +189,75 @@ lee-code is a CLI coding assistant inspired by Claude Code. It's designed to be 
 **Solved**: ✓
 **Not Solved**: LLM integration (added later)
 **Reason/Lesson**: Start with core features, then iterate
+
+---
+
+## 2026-05-09 - vLLM Server-Side Tool Parsing Strategy
+
+**Iteration**: N/A (strategy decision)
+**Problem**: LLM outputs various internal formats (python lists like `searchFiles(["chat*.py"])`) that require increasingly complex client-side fuzzy parsing
+**Solution**: Use vLLM or SGLang server with built-in tool parsers instead of client-side fuzzy parsing:
+```bash
+vllm serve MiniMaxAI/MiniMax-M2.5 \
+  --tool-call-parser minimax_m2 \
+  --reasoning-parser minimax_m2 \
+  --enable-auto-tool-choice \
+  --trust-remote-code
+```
+vLLM converts MiniMax's internal XML-ish tool format → proper `tool_calls` API response
+**Caveat**: Need to integrate vLLM/SGLang as local server in lee-code
+**Solved**: ✓ (identified solution path)
+**Not Solved**: vLLM/SGLang server integration implementation
+**Reason/Lesson**: Don't bloat client with fuzzy parsing - server should do proper tool parsing. Lesson learned from dealing with 6+ different formats.
+
+---
+
+## 2026-05-09 - Refactor Fuzzy Parser to Module
+
+**Iteration**: N/A (current refactor)
+**Problem**: Tool parsing code scattered in index.ts, hard to maintain
+**Solution**: Extracted to `src/toolParser.ts`:
+- `fuzzyMatch()` - string fuzzy matching
+- `parseToolCallsFromText()` - all text format parsers (6 formats)
+- `parseFunctionCalls()` - vLLM/SGLang server format parser
+- Added proper TypeScript types
+**Caveat**: Need to update all imports
+**Solved**: ✓
+**Not Solved**: -
+**Reason/Lesson**: Separate concerns early - parsing is its own module
+
+---
+
+## Plan: vLLM/SGLang Integration
+
+### Research Findings
+
+1. **vLLM** provides built-in tool parsers:
+   - `--tool-call-parser` selects parser (llama3_json, hermes, minimax_m2)
+   - `--enable-auto-tool-choice` enables automatic tool calling
+   - Provides OpenAI-compatible API at `http://localhost:8000/v1`
+
+2. **Usage**:
+   ```bash
+   # Start vLLM with MiniMax model
+   vllm serve MiniMaxAI/MiniMax-M2.5 \
+     --tool-call-parser minimax_m2 \
+     --reasoning-parser minimax_m2 \
+     --enable-auto-tool-choice \
+     --trust-remote-code
+   ```
+
+3. **lee-code Integration**:
+   - Add vLLM as new provider in llm.ts
+   - Base URL: `http://localhost:8000/v1`
+   - No API key needed for local server
+   - vLLM handles all tool parsing internally
+   -lee-code receives clean `tool_calls` in response
+
+### Implementation Steps
+
+1. Add vLLM provider to `llm.ts` with base URL `http://localhost:8000/v1`
+2. Add vLLM config options (model, parser settings)
+3. Add `:vllm` interactive command to start/stop vLLM server
+4. Keep fuzzy parser as fallback for remote APIs
+5. Document vLLM setup in README
