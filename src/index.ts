@@ -9,6 +9,7 @@ import * as readline from "readline";
 import fg from "fast-glob";
 import { spawn } from "child_process";
 import { chat, ChatMessage, LLMProvider, getEnvApiKey, listProviders } from "./llm.js";
+import { registerTool, Tool, ToolCall, ToolResult, getTool } from "./tools.js";
 
 interface FileOperationResult {
   success: boolean;
@@ -110,6 +111,61 @@ let customBaseUrl = "";
 let apiKey = "";
 let demoMode = false;
 
+registerTool("readFile", async (args) => {
+  const { path: filePath } = args;
+  try {
+    const content = await fs.readFile(filePath as string, "utf-8");
+    return { success: true, result: content };
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+});
+
+registerTool("searchFiles", async (args) => {
+  const { pattern } = args;
+  try {
+    const files = await fg(pattern as string, { absolute: true, onlyFiles: true });
+    return { success: true, result: files.join("\n") };
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+});
+
+registerTool("runCommand", async (args) => {
+  const { command } = args;
+  return new Promise((resolve) => {
+    const child = spawn(command as string, [], { cwd: process.cwd(), shell: true });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (d) => { stdout += d.toString(); });
+    child.stderr?.on("data", (d) => { stderr += d.toString(); });
+    const timer = setTimeout(() => { child.kill(); resolve({ success: false, error: "Timeout" }); }, 60000);
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ success: code === 0, result: stdout, error: stderr || undefined });
+    });
+    child.on("error", (e) => { clearTimeout(timer); resolve({ success: false, error: (e as Error).message }); });
+  });
+});
+
+const tools: Tool[] = [
+  {
+    name: "readFile",
+    description: "Read contents of a file",
+    parameters: { type: "object", properties: { path: { type: "string", description: "File path to read" } }, required: ["path"] },
+  },
+  {
+    name: "searchFiles",
+    description: "Search for files using glob pattern",
+    parameters: { type: "object", properties: { pattern: { type: "string", description: "Glob pattern like **/*.ts" } }, required: ["pattern"] },
+  },
+  {
+    name: "runCommand",
+    description: "Run a shell command",
+    parameters: { type: "object", properties: { command: { type: "string", description: "Command to run" } }, required: ["command"] },
+  },
+];
+
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
 function promptQuestion(question: string): Promise<string> {
@@ -120,39 +176,62 @@ async function getLLMResponse(userInput: string, messages: ChatMessage[]): Promi
   const context = await loadProjectContext(process.cwd());
   
   const systemPrompt = `You are lee-code, a CLI coding assistant. You help users with software engineering tasks.
-Available tools: read file, write file, edit file, search files (glob), run shell commands.
+
+You have access to these tools:
+- readFile(path): Read file contents
+- searchFiles(pattern): Find files using glob pattern
+- runCommand(command): Execute shell commands
 
 Project context:
 ${context}
 
-When用户提供代码相关请求时，你可以:
-1. 读取文件了解代码结构
-2. 使用glob搜索文件
-3. 运行命令构建/测试
-4. 写代码解决用户需求
+When user asks coding tasks:
+1. Use readFile to explore code
+2. Use searchFiles to find relevant files
+3. Use runCommand to build/test
+4. Provide working code solution
 
-Keep responses concise and practical. If user asks to implement something, provide working code.`;
+IMPORTANT: Use tool_calls to execute actions. Format your response as JSON tool call when needed.`;
 
-  const userMsg = `Current request: ${userInput}`;
-
-  const tempMessages: ChatMessage[] = [
-    { role: "system", content: systemPrompt },
-    ...messages,
-    { role: "user", content: userMsg },
-  ];
-
-  try {
-    const cfg: any = { provider, model };
+  async function callLLM(history: ChatMessage[]): Promise<any> {
+    const cfg: any = { provider, model, tools };
     if (customBaseUrl) cfg.baseUrl = customBaseUrl;
     if (provider === "openai" || provider === "anthropic" || provider === "groq" || provider === "huggingface" || provider === "openrouter") {
       cfg.apiKey = apiKey || getEnvApiKey(provider);
     }
-    
-    const response = await chat(tempMessages, cfg);
-    return response.message.content;
-  } catch (error) {
-    return `Error: ${(error as Error).message}`;
+    return chat(history, cfg);
   }
+
+  let history: ChatMessage[] = [
+    { role: "system", content: systemPrompt },
+    ...messages,
+  ];
+
+  for (let i = 0; i < 5; i++) {
+    try {
+      const response = await callLLM(history);
+      
+      if (response.toolCalls && response.toolCalls.length > 0) {
+        for (const tc of response.toolCalls) {
+          const fn = getTool(tc.name);
+          if (fn) {
+            const result = await fn(tc.arguments);
+            const toolMsg = `{tool_result} ${tc.name}: ${result.success ? result.result : result.error}`;
+            history.push({ role: "assistant", content: `Calling tool: ${tc.name}` });
+            history.push({ role: "user", content: toolMsg });
+          } else {
+            history.push({ role: "user", content: `{error} Unknown tool: ${tc.name}` });
+          }
+        }
+      } else {
+        return response.message.content;
+      }
+    } catch (error) {
+      return `Error: ${(error as Error).message}`;
+    }
+  }
+  
+  return "Max iterations reached";
 }
 
 async function startInteractive() {

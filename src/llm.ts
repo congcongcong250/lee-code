@@ -1,3 +1,5 @@
+import { Tool, ToolCall } from "./tools.js";
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -12,6 +14,7 @@ export interface ChatOptions {
 export interface ChatResponse {
   message: ChatMessage;
   done: boolean;
+  toolCalls?: ToolCall[];
 }
 
 export type LLMProvider = "ollama" | "openai" | "anthropic" | "groq" | "huggingface" | "openrouter";
@@ -21,6 +24,7 @@ export interface LLMConfig {
   baseUrl?: string;
   apiKey?: string;
   model: string;
+  tools?: Tool[];
 }
 
 const DEFAULT_PROVIDER: LLMProvider = "openrouter";
@@ -124,10 +128,22 @@ async function chatOpenAI(messages: ChatMessage[], cfg: LLMConfig): Promise<Chat
     throw new Error("OpenAI requires API key. Set OPENAI_API_KEY env var.");
   }
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     model: cfg.model,
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
   };
+
+  if (cfg.tools && cfg.tools.length > 0) {
+    payload.tools = cfg.tools.map((t) => ({
+      type: "function",
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      },
+    }));
+    payload.tool_choice = "auto";
+  }
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -152,12 +168,21 @@ async function chatOpenAI(messages: ChatMessage[], cfg: LLMConfig): Promise<Chat
   }
 
   const data: any = await res.json();
+  
+  const assistantMsg = data.choices?.[0]?.message;
+  const toolCalls = assistantMsg?.tool_calls?.map((tc: any) => ({
+    id: tc.id,
+    name: tc.function.name,
+    arguments: JSON.parse(tc.function.arguments),
+  }));
+
   return {
     message: {
       role: "assistant",
-      content: data.choices?.[0]?.message?.content || "",
+      content: assistantMsg?.content || "",
     },
     done: true,
+    toolCalls,
   };
 }
 
