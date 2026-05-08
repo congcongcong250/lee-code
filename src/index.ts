@@ -8,7 +8,7 @@ import * as path from "path";
 import * as readline from "readline";
 import fg from "fast-glob";
 import { spawn } from "child_process";
-import { chat, ChatMessage, LLMProvider, getEnvApiKey, listProviders, ChatResponse } from "./llm.js";
+import { chat, ChatMessage, LLMProvider, getEnvApiKey, listProviders, ChatResponse, OPENROUTER_MODELS, ModelMode } from "./llm.js";
 import { registerTool, Tool, ToolResult, getTool, listTools, clearTools } from "./tools.js";
 import { ToolCall } from "./tools.js";
 import { debug, info, warn as logWarn, error as logError, setLogLevel, setVerboseMode, saveLogs, logLLM, saveLLMLogs, getSessionIdValue } from "./debug.js";
@@ -155,8 +155,8 @@ const tools: Tool[] = [
 ];
 
 // === STATE ===
-let provider: LLMProvider = "groq";
-let model = "llama-3.3-70b-versatile";
+let provider: LLMProvider = "openrouter";
+let model = "openrouter/free";
 let customBaseUrl = "";
 let apiKey = "";
 
@@ -192,8 +192,10 @@ Respond concisely. Use tools when needed.`;
     { role: "user", content: userInput },
   ];
 
-  // Agentic loop: max 5 iterations
-  for (let i = 0; i < 5; i++) {
+  const MAX_ITERATIONS = 10;
+
+  // Agentic loop: max 10 iterations
+  for (let i = 0; i < MAX_ITERATIONS; i++) {
     try {
       debug(`Iteration ${i + 1}: Calling LLM`, { provider, model, toolsCount: tools.length });
       
@@ -222,6 +224,15 @@ Respond concisely. Use tools when needed.`;
       
       debug(`Iteration ${i + 1}: LLM responded`, { contentLength: respContent.length, hasToolCalls: !!response.toolCalls, duration });
       
+      // Display LLM response to user
+      const displayContent = response.message.content.slice(0, 500);
+      if (displayContent) {
+        console.log(displayContent);
+        if (response.message.content.length > 500) {
+          console.log(`... [truncated ${response.message.content.length - 500} chars]`);
+        }
+      }
+      
       // Check for API tool calls
       let toolCalls = response.toolCalls || [];
       
@@ -237,6 +248,9 @@ Respond concisely. Use tools when needed.`;
       }
       
       if (toolCalls.length > 0) {
+        // Display tools being called
+        console.log(`⚙️ Calling: ${toolCalls.map(tc => `${tc.name}(${JSON.stringify(tc.arguments).slice(0, 50)})`).join(", ")}`);
+        
         // Execute tool calls
         for (const tc of toolCalls) {
           debug(`Executing tool`, { name: tc.name, args: tc.arguments });
@@ -245,9 +259,16 @@ Respond concisely. Use tools when needed.`;
           const fn = getTool(tc.name);
           if (fn) {
             const result = await fn(tc.arguments);
+            // Summarize and truncate result
+            const rawResult = result.success ? (result.result || "") : (result.error || "Unknown error");
+            const truncatedResult = typeof rawResult === "string" && rawResult.length > 200 
+              ? rawResult.slice(0, 200) + " ... [truncated]" 
+              : rawResult;
             const resultStr = result.success 
-              ? `Tool ${tc.name} result: ${result.result}`
-              : `Tool ${tc.name} error: ${result.error}`;
+              ? truncatedResult
+              : `Error: ${result.error}`;
+            
+            console.log(`→ ${resultStr}`);
             
             logLLM("tool_result", resultStr, { provider, model, iteration: i + 1, toolCalls: tc.name });
             
@@ -258,6 +279,7 @@ Respond concisely. Use tools when needed.`;
             messages.push({ role: "assistant", content: response.message.content });
             messages.push({ role: "user", content: resultStr });
           } else {
+            console.log(`⚠️ Unknown tool: ${tc.name}`);
             messages.push({ role: "user", content: `Unknown tool: ${tc.name}` });
           }
         }
@@ -331,6 +353,18 @@ async function startInteractive() {
       if (idx >= 0 && idx < providers.length) {
         provider = providers[idx].name as LLMProvider;
         model = providers[idx].defaultModel;
+        if (provider === "openrouter") {
+          console.log("\nOpenRouter models (free):");
+          OPENROUTER_MODELS.forEach((m, i) => {
+            const modeLabel = m.mode === "schema" ? "(strict JSON schema)" : "(native tool calling)";
+            console.log(`  ${i + 1}. ${m.model} ${modeLabel}`);
+          });
+          const modelSel = await promptQuestion("Select model: ");
+          const modelIdx = parseInt(modelSel) - 1;
+          if (modelIdx >= 0 && modelIdx < OPENROUTER_MODELS.length) {
+            model = OPENROUTER_MODELS[modelIdx].model;
+          }
+        }
         console.log(`Provider: ${provider} (${model})`);
       }
     } else if (cmd === ":files") {
