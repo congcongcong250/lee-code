@@ -30,11 +30,15 @@ export const COLORS = {
   bgGray: "\x1b[100m",
 };
 
+export function enableColors() {
+  process.env.FORCE_COLOR = "1";
+}
+
 export function printHeader() {
   console.log("");
-  console.log(`${COLORS.bgCyan}${COLORS.black}╔═══════════════════════════════════════════════════════╗${COLORS.reset}`);
-  console.log(`${COLORS.bgCyan}${COLORS.black}║              lee-code v1.0.0 - AI Coding Assistant       ║${COLORS.reset}`);
-  console.log(`${COLORS.bgCyan}${COLORS.black}╚═══════════════════════════════════════════════════════╝${COLORS.reset}`);
+  console.log(`${COLORS.bgCyan}${COLORS.black}+=============================================================+${COLORS.reset}`);
+  console.log(`${COLORS.bgCyan}${COLORS.black}|              lee-code v1.0.0 - AI Coding Assistant       |${COLORS.reset}`);
+  console.log(`${COLORS.bgCyan}${COLORS.black}+=============================================================+${COLORS.reset}`);
   console.log("");
 }
 

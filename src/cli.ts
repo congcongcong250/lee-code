@@ -5,15 +5,16 @@ dotenv.config();
 
 import * as readline from "readline";
 import { chat, ChatMessage, LLMProvider, getEnvApiKey, ChatResponse, OPENROUTER_MODELS, listProviders } from "./llm";
-import { registerTool, ToolResult, getTool, listTools } from "./tools";
-import { ToolCall } from "./tools";
+import { getTool, listTools } from "./tools";
 import { debug, setLogLevel, setVerboseMode, logLLM, saveLLMLogs } from "./debug";
 import { parseToolCallsFromText, parseFunctionCalls } from "./toolParser";
 import { loadProjectContext } from "./context";
-import { readFile, writeFile, editFile, searchFiles } from "./fileOps";
+import { searchFiles } from "./fileOps";
 import { runCommand } from "./shell";
-import { COLORS, printHeader, printUser, printAssistant, printTool, printResult, printError, printDim, printSuccess, printProvider, printModel } from "./ui";
-import { getState, setProvider, setModel, setCustomBaseUrl, setApiKey } from "./state";
+import { COLORS, printHeader, printAssistant, printTool, printResult, printError, printSuccess, enableColors } from "./ui";
+import { getState, setProvider, setModel } from "./state";
+
+enableColors();
 
 const MAX_ITERATIONS = 10;
 
