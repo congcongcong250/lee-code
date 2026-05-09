@@ -4,17 +4,54 @@ import * as dotenv from "dotenv";
 dotenv.config();
 
 import { chat, ChatMessage, LLMProvider, getEnvApiKey, ChatResponse, OPENROUTER_MODELS, listProviders } from "./llm";
-import { getTool, listTools } from "./tools";
+import { registerTool, getTool, listTools } from "./tools";
 import { debug, setLogLevel, setVerboseMode, logLLM, saveLLMLogs } from "./debug";
 import { parseToolCallsFromText, parseFunctionCalls } from "./toolParser";
 import { loadProjectContext } from "./context";
-import { searchFiles } from "./fileOps";
+import { searchFiles, readFile } from "./fileOps";
 import { runCommand } from "./shell";
 import { COLORS, printHeader, printAssistant, printTool, printResult, printError, printSuccess, createSpinner, enableColors } from "./ui";
 import { parseSchemaResponse } from "./schema";
 import { getState, setProvider, setModel } from "./state";
 
 enableColors();
+
+registerTool("searchFiles", async (args) => {
+  try {
+    const pattern = args.pattern as string;
+    const files = await searchFiles(pattern);
+    return { success: true, result: JSON.stringify(files) };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+});
+
+registerTool("readFile", async (args) => {
+  try {
+    const filePath = args.path as string;
+    const result = await readFile(filePath);
+    if (result.success) {
+      return { success: true, result: result.data || "" };
+    } else {
+      return { success: false, error: result.error || "Read failed" };
+    }
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+});
+
+registerTool("runCommand", async (args) => {
+  try {
+    const command = args.command as string;
+    const result = await runCommand(command);
+    const output = result.success 
+      ? (result.stdout || "") 
+      : (result.error || "Command failed");
+    return { success: true, result: output };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+});
 
 const MAX_ITERATIONS = 10;
 
@@ -105,7 +142,7 @@ loadingSpinner.stop();
               const truncated = typeof raw === "string" && raw.length > 200 ? raw.slice(0, 200) + "..." : raw;
               printResult(truncated);
               messages.push({ role: "assistant", content: respContent });
-              messages.push({ role: "user", content: truncated });
+              messages.push({ role: "tool", content: truncated, toolCallId: tc?.id || "call_0" });
             }
           }
           continue;
@@ -150,7 +187,7 @@ loadingSpinner.stop();
             saveLLMLogs();
             
             messages.push({ role: "assistant", content: respContent });
-            messages.push({ role: "user", content: truncated });
+            messages.push({ role: "tool", content: truncated, toolCallId: tc?.id || "call_0" });
           } else {
             printError(`Unknown tool: ${tc.name}`);
             messages.push({ role: "user", content: `Unknown tool: ${tc.name}` });

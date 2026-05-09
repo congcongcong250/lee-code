@@ -16,8 +16,6 @@ export const OPENROUTER_MODELS: ModelConfig[] = [
 
 export const SCHEMAS_MODELS = new Set(OPENROUTER_MODELS.filter(m => m.mode === "schema").map(m => m.model));
 
-export type SchemaStatus = "continue" | "finished" | "error" | "ask_user";
-
 export interface SchemaToolCall {
   id: string;
   name: string;
@@ -25,7 +23,6 @@ export interface SchemaToolCall {
 }
 
 export interface SchemaResponse {
-  status: SchemaStatus;
   content: string;
   tool_calls?: SchemaToolCall[];
   version: "1.0";
@@ -34,11 +31,6 @@ export interface SchemaResponse {
 export const SCHEMA_JSON = {
   type: "object" as const,
   properties: {
-    status: {
-      type: "string" as const,
-      enum: ["continue", "finished", "error", "ask_user"],
-      description: "Whether to continue the agent loop or finish",
-    },
     content: {
       type: "string" as const,
       description: "Text response to display to the user",
@@ -58,7 +50,7 @@ export const SCHEMA_JSON = {
     },
     version: { type: "string" as const, const: "1.0" as const },
   },
-  required: ["status", "content", "version"],
+  required: ["content", "version"],
 };
 
 export function parseSchemaResponse(content: string): SchemaResponse | null {
@@ -72,7 +64,7 @@ export function parseSchemaResponse(content: string): SchemaResponse | null {
   }
   try {
     const parsed = JSON.parse(jsonStr);
-    if (parsed.status && parsed.version) {
+    if (parsed.content && parsed.version) {
       return parsed as SchemaResponse;
     }
   } catch {}

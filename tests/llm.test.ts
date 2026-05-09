@@ -1,61 +1,53 @@
 import { describe, it, expect } from "vitest";
 import { parseSchemaResponse, SCHEMA_JSON, OPENROUTER_MODELS, SCHEMAS_MODELS } from "../src/schema";
 
-describe("Schema Response Parsing - Error Handling", () => {
-  it("parses error status and displays message", () => {
+describe("Schema Response Parsing", () => {
+  it("parses content and version", () => {
     const input = JSON.stringify({
-      status: "error",
-      content: "Failed to retrieve tools",
+      content: "Hello world",
       version: "1.0"
     });
     const result = parseSchemaResponse(input);
     expect(result).not.toBeNull();
-    expect(result!.status).toBe("error");
-    expect(result!.content).toBe("Failed to retrieve tools");
+    expect(result!.content).toBe("Hello world");
+    expect(result!.version).toBe("1.0");
   });
 
-  it("parses finished status", () => {
+  it("parses content with tool_calls", () => {
     const input = JSON.stringify({
-      status: "finished",
-      content: "Done",
-      version: "1.0"
-    });
-    const result = parseSchemaResponse(input);
-    expect(result).not.toBeNull();
-    expect(result!.status).toBe("finished");
-  });
-
-  it("parses continue status with tool_calls", () => {
-    const input = JSON.stringify({
-      status: "continue",
-      content: "Working",
+      content: "Searching files",
       version: "1.0",
       tool_calls: [
-        { id: "call_1", name: "readFile", arguments: { path: "a.ts" } }
+        { id: "call_1", name: "searchFiles", arguments: { pattern: "*.ts" } }
       ]
     });
     const result = parseSchemaResponse(input);
     expect(result).not.toBeNull();
-    expect(result!.status).toBe("continue");
     expect(result!.tool_calls).toHaveLength(1);
-    expect(result!.tool_calls![0].name).toBe("readFile");
+    expect(result!.tool_calls![0].name).toBe("searchFiles");
   });
 
-  it("handles error with tool_calls count in message", () => {
-    const input = JSON.stringify({
-      status: "error",
-      content: "Error invoking MCP tool: permission denied",
-      version: "1.0"
-    });
+  it("parses content with tool_calls in code block", () => {
+    const input = "```json\n" + JSON.stringify({
+      content: "Found files",
+      version: "1.0",
+      tool_calls: [
+        { id: "call_1", name: "searchFiles", arguments: { pattern: "*.ts" } }
+      ]
+    }) + "\n```";
     const result = parseSchemaResponse(input);
     expect(result).not.toBeNull();
-    expect(result!.status).toBe("error");
-    expect(result!.content).toContain("Error");
+    expect(result!.tool_calls).toHaveLength(1);
   });
 
   it("returns null for non-JSON", () => {
     expect(parseSchemaResponse("not json")).toBeNull();
     expect(parseSchemaResponse("")).toBeNull();
+  });
+
+  it("returns null for missing version", () => {
+    const input = JSON.stringify({ content: "hello" });
+    expect(parseSchemaResponse(input)).toBeNull();
   });
 });
 
@@ -66,8 +58,8 @@ describe("OPENROUTER_MODELS configuration", () => {
   });
 
   it("SCHEMAS_MODELS contains correct models", () => {
-    expect(SCHEMAS_MODELS.has("openrouter/free")).toBe(true);
     expect(SCHEMAS_MODELS.has("nvidia/nemotron-3-super-120b-a12b:free")).toBe(true);
+    expect(SCHEMAS_MODELS.has("qwen/qwen3-next-80b-a3b-instruct:free")).toBe(true);
   });
 
   it("native models NOT in SCHEMAS_MODELS", () => {
@@ -77,13 +69,16 @@ describe("OPENROUTER_MODELS configuration", () => {
 });
 
 describe("SCHEMA_JSON structure", () => {
-  it("has status enum with error", () => {
-    expect(SCHEMA_JSON.properties.status.enum).toContain("error");
-  });
-
-  it("has all required fields", () => {
-    expect(SCHEMA_JSON.required).toContain("status");
+  it("has content and version required", () => {
     expect(SCHEMA_JSON.required).toContain("content");
     expect(SCHEMA_JSON.required).toContain("version");
+  });
+
+  it("has tool_calls array", () => {
+    expect(SCHEMA_JSON.properties.tool_calls).toBeDefined();
+  });
+
+  it("has version const 1.0", () => {
+    expect(SCHEMA_JSON.properties.version.const).toBe("1.0");
   });
 });
