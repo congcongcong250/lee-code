@@ -138,6 +138,12 @@ export function logLLM(
   };
   
   llmLogs.push(entry);
+  
+  // In verbose mode, also log to console
+  if (verboseMode) {
+    const roleLabel = { user: "❯", assistant: "🤖", system: "⚙️", tool: "🔧", tool_result: "✅" }[role];
+    console.log(`${roleLabel} ${truncated.slice(0, 200)}`);
+  }
 }
 
 export function getLLMLogs(): LLMEntry[] {

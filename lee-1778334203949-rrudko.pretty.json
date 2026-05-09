@@ -1,0 +1,33 @@
+{
+  "sessionId": "lee-1778334203949-rrudko",
+  "logs": [
+    {
+      "sessionId": "lee-1778334203949-rrudko",
+      "timestamp": "2026-05-09T13:43:23.949Z",
+      "role": "user",
+      "content": "I would like to know in my current folder how does ths typescript project do chat loop with llm, summarise how it works in 200 word",
+      "provider": "groq",
+      "model": "llama-3.3-70b-versatile",
+      "iteration": 1
+    },
+    {
+      "sessionId": "lee-1778334203949-rrudko",
+      "timestamp": "2026-05-09T13:43:23.950Z",
+      "role": "system",
+      "content": "[{\"role\":\"system\",\"content\":\"You are lee-code, a CLI coding assistant.\\n\\nYou have these tools:\\n- readFile(path): Read a file\\n- searchFiles(pattern): Find files using glob \\n- runCommand(command): Run a shell command\\n\\nIMPORTANT: Whe\"},{\"role\":\"user\",\"content\":\"I would like to know in my current ...",
+      "provider": "groq",
+      "model": "llama-3.3-70b-versatile",
+      "iteration": 1
+    },
+    {
+      "sessionId": "lee-1778334203949-rrudko",
+      "timestamp": "2026-05-09T13:43:24.946Z",
+      "role": "assistant",
+      "content": "To understand how the TypeScript project implements a chat loop with LLM, I'll search for relevant files. \n\n```bash\nsearchFiles('**/chat/**/*.ts')\n```\n\nPlease wait while I search for files...\n\nOnce I have the files, I can read them and summarize how the chat loop works. \n\nAssuming the search returns...",
+      "provider": "groq",
+      "model": "llama-3.3-70b-versatile",
+      "iteration": 1,
+      "duration": 996
+    }
+  ]
+}

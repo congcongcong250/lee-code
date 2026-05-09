@@ -255,9 +255,14 @@ async function main() {
   const commandArgs = args.filter(a => !a.startsWith('--') && !a.startsWith('-'));
   
   for (const flag of flags) {
-    if (flag === "--debug") setLogLevel("debug");
-    if (flag === "--verbose") setVerboseMode(true);
-    if (flag === "-v") setVerboseMode(true);
+    if (flag === "--debug") {
+      setLogLevel("debug");
+      console.log(`${COLORS.yellow}🔍 Debug mode enabled - verbose logging active${COLORS.reset}`);
+    }
+    if (flag === "--verbose" || flag === "-v") {
+      setVerboseMode(true);
+      console.log(`${COLORS.cyan}📝 Verbose mode enabled - LLM requests/responses will be logged${COLORS.reset}`);
+    }
   }
   
   if (commandArgs.length > 0) {
