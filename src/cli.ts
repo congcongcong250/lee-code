@@ -4,7 +4,7 @@ import * as dotenv from "dotenv";
 dotenv.config();
 
 import { chat, ChatMessage, LLMProvider, getEnvApiKey, ChatResponse, OPENROUTER_MODELS, listProviders } from "./llm";
-import { registerTool, getTool, listTools } from "./tools";
+import { registerTool, getTool, listTools, listToolSchemas, Tool } from "./tools";
 import { debug, setLogLevel, setVerboseMode, logLLM, saveLLMLogs } from "./debug";
 import { parseToolCallsFromText, parseFunctionCalls } from "./toolParser";
 import { loadProjectContext } from "./context";
@@ -16,45 +16,85 @@ import { getState, setProvider, setModel } from "./state";
 
 enableColors();
 
-registerTool("searchFiles", async (args) => {
-  try {
-    const pattern = (args.pattern || args.path) as string;
-    if (!pattern) return { success: false, error: "Missing pattern argument" };
-    const files = await searchFiles(pattern);
-    return { success: true, result: JSON.stringify(files) };
-  } catch (e: any) {
-    return { success: false, error: e.message };
-  }
-});
+const toolSchemas: Tool[] = [
+  {
+    name: "searchFiles",
+    description: "Find files using glob pattern",
+    parameters: {
+      type: "object",
+      properties: {
+        pattern: { type: "string", description: "Glob pattern (e.g., **/*.ts, *.js)" },
+      },
+      required: ["pattern"],
+    },
+  },
+  {
+    name: "readFile",
+    description: "Read file contents",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "File path to read" },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "runCommand",
+    description: "Run shell command",
+    parameters: {
+      type: "object",
+      properties: {
+        command: { type: "string", description: "Shell command to execute" },
+      },
+      required: ["command"],
+    },
+  },
+];
 
-registerTool("readFile", async (args) => {
-  try {
-    const filePath = (args.path || args.filePath) as string;
-    if (!filePath) return { success: false, error: "Missing path argument" };
-    const result = await readFile(filePath);
-    if (result.success) {
-      return { success: true, result: result.data || "" };
-    } else {
-      return { success: false, error: result.error || "Read failed" };
-    }
-  } catch (e: any) {
-    return { success: false, error: e.message };
+for (const ts of toolSchemas) {
+  if (ts.name === "searchFiles") {
+    registerTool(ts.name, async (args) => {
+      try {
+        const pattern = (args.pattern || args.path) as string;
+        if (!pattern) return { success: false, error: "Missing pattern argument" };
+        const files = await searchFiles(pattern);
+        return { success: true, result: JSON.stringify(files) };
+      } catch (e: any) {
+        return { success: false, error: e.message };
+      }
+    }, ts);
+  } else if (ts.name === "readFile") {
+    registerTool(ts.name, async (args) => {
+      try {
+        const filePath = (args.path || args.filePath) as string;
+        if (!filePath) return { success: false, error: "Missing path argument" };
+        const result = await readFile(filePath);
+        if (result.success) {
+          return { success: true, result: result.data || "" };
+        } else {
+          return { success: false, error: result.error || "Read failed" };
+        }
+      } catch (e: any) {
+        return { success: false, error: e.message };
+      }
+    }, ts);
+  } else if (ts.name === "runCommand") {
+    registerTool(ts.name, async (args) => {
+      try {
+        const command = (args.command || args.cmd) as string;
+        if (!command) return { success: false, error: "Missing command argument" };
+        const result = await runCommand(command);
+        const output = result.success 
+          ? (result.stdout || "") 
+          : (result.error || "Command failed");
+        return { success: true, result: output };
+      } catch (e: any) {
+        return { success: false, error: e.message };
+      }
+    }, ts);
   }
-});
-
-registerTool("runCommand", async (args) => {
-  try {
-    const command = (args.command || args.cmd) as string;
-    if (!command) return { success: false, error: "Missing command argument" };
-    const result = await runCommand(command);
-    const output = result.success 
-      ? (result.stdout || "") 
-      : (result.error || "Command failed");
-    return { success: true, result: output };
-  } catch (e: any) {
-    return { success: false, error: e.message };
-  }
-});
+}
 
 const MAX_ITERATIONS = 10;
 
@@ -106,7 +146,7 @@ Respond concisely. Use tools when needed.`;
       const msgsForLog = messages.map(m => ({ role: m.role, content: m.content.slice(0, 200) }));
       logLLM("system", JSON.stringify(msgsForLog), { provider, model, iteration: i + 1 });
       
-      const cfg: any = { provider, model, tools: Object.values(listTools()) };
+      const cfg: any = { provider, model, tools: listToolSchemas() };
       if (state.customBaseUrl) cfg.baseUrl = state.customBaseUrl;
       if (["openai", "anthropic", "groq", "huggingface", "openrouter"].includes(provider)) {
         cfg.apiKey = state.apiKey || getEnvApiKey(provider);

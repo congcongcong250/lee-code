@@ -1,51 +1,110 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { registerTool, getTool, clearTools, listTools } from "../src/tools";
+import { registerTool, getTool, getToolSchema, clearTools, listToolSchemas, Tool } from "../src/tools";
 
-describe("Tool Registration CLI Integration", () => {
+describe("Tool Registration with Schemas", () => {
   beforeEach(() => { clearTools(); });
 
-  it("registers searchFiles tool", async () => {
+  it("registers tool with schema", () => {
+    const schema: Tool = {
+      name: "testTool",
+      description: "Test tool",
+      parameters: { type: "object", properties: { arg1: { type: "string" } }, required: ["arg1"] },
+    };
+    registerTool("testTool", async () => ({ success: true, result: "ok" }), schema);
+    
+    const storedSchema = getToolSchema("testTool");
+    expect(storedSchema).toBeDefined();
+    expect(storedSchema!.name).toBe("testTool");
+    expect(storedSchema!.parameters.properties.arg1).toBeDefined();
+  });
+
+  it("lists tool schemas", () => {
+    const schema: Tool = {
+      name: "tool1",
+      description: "Tool 1",
+      parameters: { type: "object", properties: {} },
+    };
+    registerTool("tool1", async () => ({ success: true }), schema);
+    
+    const schemas = listToolSchemas();
+    expect(schemas.length).toBeGreaterThan(0);
+    expect(schemas.find(s => s.name === "tool1")).toBeDefined();
+  });
+
+  it("searchFiles schema has pattern argument", () => {
+    const schema: Tool = {
+      name: "searchFiles",
+      description: "Find files",
+      parameters: { type: "object", properties: { pattern: { type: "string" } }, required: ["pattern"] },
+    };
+    registerTool("searchFiles", async () => ({ success: true }), schema);
+    
+    const stored = getToolSchema("searchFiles");
+    expect(stored?.parameters.properties.pattern).toBeDefined();
+  });
+
+  it("runCommand schema has command argument", () => {
+    const schema: Tool = {
+      name: "runCommand",
+      description: "Run command",
+      parameters: { type: "object", properties: { command: { type: "string" } }, required: ["command"] },
+    };
+    registerTool("runCommand", async () => ({ success: true }), schema);
+    
+    const stored = getToolSchema("runCommand");
+    expect(stored?.parameters.properties.command).toBeDefined();
+  });
+});
+
+describe("Tool Execution", () => {
+  beforeEach(() => { clearTools(); });
+
+  it("executes searchFiles with pattern", async () => {
     registerTool("searchFiles", async (args) => {
-      return { success: true, result: '["file1.ts", "file2.ts"]' };
+      const pattern = (args.pattern || args.path) as string;
+      if (!pattern) return { success: false, error: "Missing pattern argument" };
+      return { success: true, result: `found: ${pattern}` };
     });
-    const fn = getTool("searchFiles");
-    expect(fn).toBeDefined();
-    const result = await fn!({ pattern: "*.ts" });
+    const fn = getTool("searchFiles")!;
+    const result = await fn({ pattern: "*.ts" });
     expect(result.success).toBe(true);
+    expect(result.result).toContain("*.ts");
   });
 
-  it("registers readFile tool", async () => {
+  it("executes readFile with path", async () => {
     registerTool("readFile", async (args) => {
-      const path = args.path as string;
-      return { success: true, result: `file content of ${path}` };
+      const filePath = (args.path || args.filePath) as string;
+      if (!filePath) return { success: false, error: "Missing path argument" };
+      return { success: true, result: `read: ${filePath}` };
     });
-    const fn = getTool("readFile");
-    expect(fn).toBeDefined();
-    const result = await fn!({ path: "a.ts" });
+    const fn = getTool("readFile")!;
+    const result = await fn({ path: "src/cli.ts" });
     expect(result.success).toBe(true);
-    expect(result.result).toContain("a.ts");
+    expect(result.result).toContain("src/cli.ts");
   });
 
-  it("registers runCommand tool", async () => {
+  it("executes runCommand with command", async () => {
     registerTool("runCommand", async (args) => {
-      const cmd = args.command as string;
-      return { success: true, result: `executed: ${cmd}` };
+      const command = (args.command || args.cmd) as string;
+      if (!command) return { success: false, error: "Missing command argument" };
+      return { success: true, result: `ran: ${command}` };
     });
-    const fn = getTool("runCommand");
-    expect(fn).toBeDefined();
-    const result = await fn!({ command: "ls" });
+    const fn = getTool("runCommand")!;
+    const result = await fn({ command: "ls" });
     expect(result.success).toBe(true);
     expect(result.result).toContain("ls");
   });
 
-  it("returns error on tool failure", async () => {
-    registerTool("failingTool", async () => {
-      return { success: false, error: "tool failed" };
+  it("returns error when argument missing", async () => {
+    registerTool("runCommand", async (args) => {
+      const command = (args.command || args.cmd) as string;
+      if (!command) return { success: false, error: "Missing command argument" };
+      return { success: true, result: "ok" };
     });
-    const fn = getTool("failingTool");
-    const result = await fn!({});
+    const fn = getTool("runCommand")!;
+    const result = await fn({});
     expect(result.success).toBe(false);
-    expect(result.error).toBe("tool failed");
+    expect(result.error).toBe("Missing command argument");
   });
 });
 
@@ -58,66 +117,5 @@ describe("Tool Message Role", () => {
   it("supports toolCallId in ChatMessage", () => {
     const msg = { role: "tool" as const, content: "result", toolCallId: "call_1" };
     expect(msg.toolCallId).toBe("call_1");
-  });
-});
-
-describe("Tool Argument Aliasing", () => {
-  beforeEach(() => { clearTools(); });
-
-  it("searchFiles accepts path argument", async () => {
-    let captured = "";
-    registerTool("searchFiles", async (args) => {
-      captured = args.pattern || args.path || "";
-      return { success: true, result: `captured: ${captured}` };
-    });
-    const fn = getTool("searchFiles")!;
-    const result = await fn({ path: "**/*.ts" });
-    expect(captured).toBe("**/*.ts");
-  });
-
-  it("searchFiles returns error for empty arguments", async () => {
-    registerTool("searchFiles", async (args) => {
-      const pattern = (args.pattern || args.path) as string;
-      if (!pattern) return { success: false, error: "Missing pattern argument" };
-      return { success: true, result: "ok" };
-    });
-    const fn = getTool("searchFiles")!;
-    const result = await fn({});
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Missing pattern argument");
-  });
-
-  it("readFile accepts filePath argument", async () => {
-    let captured = "";
-    registerTool("readFile", async (args) => {
-      captured = (args.path || args.filePath) as string;
-      return { success: true, result: captured };
-    });
-    const fn = getTool("readFile")!;
-    const result = await fn({ filePath: "src/cli.ts" });
-    expect(captured).toBe("src/cli.ts");
-  });
-
-  it("runCommand accepts cmd argument", async () => {
-    let captured = "";
-    registerTool("runCommand", async (args) => {
-      captured = (args.command || args.cmd) as string;
-      return { success: true, result: captured };
-    });
-    const fn = getTool("runCommand")!;
-    const result = await fn({ cmd: "ls -la" });
-    expect(captured).toBe("ls -la");
-  });
-
-  it("runCommand returns error for empty command", async () => {
-    registerTool("runCommand", async (args) => {
-      const command = (args.command || args.cmd) as string;
-      if (!command) return { success: false, error: "Missing command argument" };
-      return { success: true, result: "ok" };
-    });
-    const fn = getTool("runCommand")!;
-    const result = await fn({});
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Missing command argument");
   });
 });

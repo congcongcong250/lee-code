@@ -23,25 +23,33 @@ export interface ToolResult {
 export type ToolFunction = (args: Record<string, unknown>) => Promise<ToolResult>;
 
 const toolRegistry: Record<string, ToolFunction> = {};
+const toolSchemas: Record<string, Tool> = {};
 
-export function registerTool(name: string, fn: ToolFunction): void {
+export function registerTool(name: string, fn: ToolFunction, schema?: Tool): void {
   toolRegistry[name] = fn;
+  if (schema) {
+    toolSchemas[name] = schema;
+  }
 }
 
 export function getTool(name: string): ToolFunction | undefined {
   return toolRegistry[name];
 }
 
+export function getToolSchema(name: string): Tool | undefined {
+  return toolSchemas[name];
+}
+
 export function listTools(): Record<string, ToolFunction> {
   return { ...toolRegistry };
 }
 
-export function getToolsSchema(): Tool[] {
-  return Object.entries(toolRegistry).map(([name, fn]) => ({
-    name,
-    description: `Tool: ${name}`,
-    parameters: { type: "object", properties: {} },
-  }));
+export function listToolSchemas(): Tool[] {
+  return Object.values(toolSchemas);
+}
+
+export function getToolSchemas(): Tool[] {
+  return Object.values(toolSchemas);
 }
 
 export function clearTools(): void {
