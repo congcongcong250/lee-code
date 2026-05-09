@@ -8,7 +8,7 @@ export interface LogEntry {
 }
 
 const logs: LogEntry[] = [];
-let minLevel: LogLevel = "info";
+let minLevel: LogLevel = "error";
 let verboseMode = false;
 let sessionId = "";
 
@@ -35,9 +35,7 @@ export function setLogLevel(level: LogLevel): void {
 
 export function setVerboseMode(enabled: boolean): void {
   verboseMode = enabled;
-  if (verboseMode) {
-    setLogLevel("debug");
-  }
+  // Don't auto-enable debug logging, just enable LLM logging
 }
 
 export function isVerboseMode(): boolean {
@@ -129,21 +127,17 @@ export function logLLM(
     duration?: number;
   }
 ): void {
+  // Truncate content for logging
+  const truncated = content.length > 300 ? content.slice(0, 300) + "..." : content;
   const entry: LLMEntry = {
     sessionId: getSessionId(),
     timestamp: new Date().toISOString(),
     role,
-    content,
+    content: truncated,
     ...options,
   };
   
   llmLogs.push(entry);
-  
-  // In verbose mode, also log to console
-  if (verboseMode) {
-    const roleLabel = { user: "❯", assistant: "🤖", system: "⚙️", tool: "🔧", tool_result: "✅" }[role];
-    console.log(`${roleLabel} ${content.slice(0, 500)}${content.length > 500 ? "..." : ""}`);
-  }
 }
 
 export function getLLMLogs(): LLMEntry[] {

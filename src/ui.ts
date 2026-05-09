@@ -40,8 +40,6 @@ export const COLORS = {
 
 export function enableColors() {
   process.env.FORCE_COLOR = "1";
-  process.env.NODE_DISABLE_COLORS = "0";
-  require('tty').setRawMode && process.stdout.isTTY ? null : null;
 }
 
 export const isTTY = (): boolean => {
@@ -116,4 +114,39 @@ export async function promptQuestion(question: string): Promise<string> {
 
 export function printPrompt(): string {
   return `${COLORS.cyan}❯ ${COLORS.reset}`;
+}
+
+const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠰", "⠴", "⠦", "⠇", "⠏", "⠈"];
+let spinnerInterval: NodeJS.Timeout | null = null;
+let spinnerFrame = 0;
+
+export interface Spinner {
+  start: () => void;
+  stop: () => void;
+}
+
+export function createSpinner(): Spinner {
+  let running = false;
+  return {
+    start: () => {
+      if (running || spinnerInterval) return;
+      running = true;
+      process.stdout.write(`${COLORS.cyan}Awaiting response... ${spinnerFrames[0]}${COLORS.reset}`);
+      spinnerFrame = 0;
+      spinnerInterval = setInterval(() => {
+        if (!running) return;
+        process.stdout.write(`\r${COLORS.cyan}Awaiting response... ${spinnerFrames[spinnerFrame]}${COLORS.reset}`);
+        spinnerFrame = (spinnerFrame + 1) % spinnerFrames.length;
+      }, 80);
+    },
+    stop: () => {
+      running = false;
+      if (spinnerInterval) {
+        clearInterval(spinnerInterval);
+        spinnerInterval = null;
+      }
+      process.stdout.write(`\r${COLORS.green}✓ Response received${COLORS.reset}\n`);
+      spinnerFrame = 0;
+    },
+  };
 }

@@ -10,7 +10,7 @@ import { parseToolCallsFromText, parseFunctionCalls } from "./toolParser";
 import { loadProjectContext } from "./context";
 import { searchFiles } from "./fileOps";
 import { runCommand } from "./shell";
-import { COLORS, printHeader, printAssistant, printTool, printResult, printError, printSuccess, enableColors } from "./ui";
+import { COLORS, printHeader, printAssistant, printTool, printResult, printError, printSuccess, createSpinner, enableColors } from "./ui";
 import { getState, setProvider, setModel } from "./state";
 
 enableColors();
@@ -55,6 +55,7 @@ Respond concisely. Use tools when needed.`;
 
   const provider = state.provider as LLMProvider;
   const model = state.model;
+  const loadingSpinner = createSpinner();
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     try {
@@ -70,8 +71,10 @@ Respond concisely. Use tools when needed.`;
         cfg.apiKey = state.apiKey || getEnvApiKey(provider);
       }
       
+      loadingSpinner.start();
       const startTime = Date.now();
       const response: ChatResponse = await chat(messages, cfg);
+      loadingSpinner.stop();
       const duration = Date.now() - startTime;
       
       const respContent = response.message.content;
