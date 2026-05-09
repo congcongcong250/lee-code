@@ -1,0 +1,285 @@
+{
+  "sessionId": "lee-1778364903380-a6uc8p",
+  "logs": [
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:03.380Z",
+      "role": "user",
+      "content": "I would like to know in my current folder how does ths typescript project do chat loop with llm, summarise how it works in 200 words",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 1
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:03.380Z",
+      "role": "system",
+      "content": "[{\"role\":\"system\",\"content\":\"You are lee-code, a CLI coding assistant.\\n\\nYou have these tools:\\n- readFile(path): Read a file\\n- searchFiles(pattern): Find files using glob \\n- runCommand(command): Run a shell command\\n\\nIMPORTANT: Whe\"},{\"role\":\"user\",\"content\":\"I would like to know in my current ...",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 1
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:09.832Z",
+      "role": "assistant",
+      "content": "{\"content\":\":[{\",\"tool_calls\":[{\"id\":\"call_0\",\"name\":\"searchFiles\",\"arguments\":{\"pattern\":\"**/*.ts\"}}],\"version\":\"1.0\"}",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 1,
+      "duration": 6451
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:09.842Z",
+      "role": "user",
+      "content": "I would like to know in my current folder how does ths typescript project do chat loop with llm, summarise how it works in 200 words",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 2
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:09.842Z",
+      "role": "system",
+      "content": "[{\"role\":\"system\",\"content\":\"You are lee-code, a CLI coding assistant.\\n\\nYou have these tools:\\n- readFile(path): Read a file\\n- searchFiles(pattern): Find files using glob \\n- runCommand(command): Run a shell command\\n\\nIMPORTANT: Whe\"},{\"role\":\"user\",\"content\":\"I would like to know in my current ...",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 2
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:17.496Z",
+      "role": "assistant",
+      "content": "{\"content\":\":[{\",\"tool_calls\":[{\"id\":\"call_1\",\"name\":\"searchFiles\",\"arguments\":{\"pattern\":\"src/**/*.ts\"}}],\"version\":\"1.0\"}",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 2,
+      "duration": 7654
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:17.498Z",
+      "role": "user",
+      "content": "I would like to know in my current folder how does ths typescript project do chat loop with llm, summarise how it works in 200 words",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 3
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:17.498Z",
+      "role": "system",
+      "content": "[{\"role\":\"system\",\"content\":\"You are lee-code, a CLI coding assistant.\\n\\nYou have these tools:\\n- readFile(path): Read a file\\n- searchFiles(pattern): Find files using glob \\n- runCommand(command): Run a shell command\\n\\nIMPORTANT: Whe\"},{\"role\":\"user\",\"content\":\"I would like to know in my current ...",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 3
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:22.100Z",
+      "role": "assistant",
+      "content": "{\"content\":\":[{\",\"tool_calls\":[{\"id\":\"call_2\",\"name\":\"searchFiles\",\"arguments\":{\"pattern\":\"src/**/*chat*.ts\"}},{\"id\":\"call_3\",\"name\":\"searchFiles\",\"arguments\":{\"pattern\":\"src/**/*loop*.ts\"}}],\"version\":\"1.0\"}",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 3,
+      "duration": 4602
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:22.103Z",
+      "role": "user",
+      "content": "I would like to know in my current folder how does ths typescript project do chat loop with llm, summarise how it works in 200 words",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 4
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:22.103Z",
+      "role": "system",
+      "content": "[{\"role\":\"system\",\"content\":\"You are lee-code, a CLI coding assistant.\\n\\nYou have these tools:\\n- readFile(path): Read a file\\n- searchFiles(pattern): Find files using glob \\n- runCommand(command): Run a shell command\\n\\nIMPORTANT: Whe\"},{\"role\":\"user\",\"content\":\"I would like to know in my current ...",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 4
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:24.306Z",
+      "role": "assistant",
+      "content": "{\"content\":\":[{\",\"tool_calls\":[{\"id\":\"call_4\",\"name\":\"readFile\",\"arguments\":{\"path\":\"/Users/lirenxn/Code/lee-code/src/cli.ts\"}}],\"version\":\"1.0\"}",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 4,
+      "duration": 2201
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:24.310Z",
+      "role": "user",
+      "content": "I would like to know in my current folder how does ths typescript project do chat loop with llm, summarise how it works in 200 words",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 5
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:24.310Z",
+      "role": "system",
+      "content": "[{\"role\":\"system\",\"content\":\"You are lee-code, a CLI coding assistant.\\n\\nYou have these tools:\\n- readFile(path): Read a file\\n- searchFiles(pattern): Find files using glob \\n- runCommand(command): Run a shell command\\n\\nIMPORTANT: Whe\"},{\"role\":\"user\",\"content\":\"I would like to know in my current ...",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 5
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:27.014Z",
+      "role": "assistant",
+      "content": "{\"content\":\":[{\",\"tool_calls\":[{\"id\":\"call_5\",\"name\":\"readFile\",\"arguments\":{\"path\":\"/Users/lirenxn/Code/lee-code/src/llm.ts\"}}],\"version\":\"1.0\"}",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 5,
+      "duration": 2704
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:27.018Z",
+      "role": "user",
+      "content": "I would like to know in my current folder how does ths typescript project do chat loop with llm, summarise how it works in 200 words",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 6
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:27.018Z",
+      "role": "system",
+      "content": "[{\"role\":\"system\",\"content\":\"You are lee-code, a CLI coding assistant.\\n\\nYou have these tools:\\n- readFile(path): Read a file\\n- searchFiles(pattern): Find files using glob \\n- runCommand(command): Run a shell command\\n\\nIMPORTANT: Whe\"},{\"role\":\"user\",\"content\":\"I would like to know in my current ...",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 6
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:36.128Z",
+      "role": "assistant",
+      "content": "{\"content\":\":[{\",\"tool_calls\":[{\"id\":\"call_6\",\"name\":\"searchFiles\",\"arguments\":{\"pattern\":\"src/**/*.ts\"}},{\"id\":\"call_7\",\"name\":\"runCommand\",\"arguments\":{\"command\":\"grep -n \\\"export function chat\\\" src/**/*.ts\"}}],\"version\":\"1.0\"}",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 6,
+      "duration": 9110
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:36.143Z",
+      "role": "user",
+      "content": "I would like to know in my current folder how does ths typescript project do chat loop with llm, summarise how it works in 200 words",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 7
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:36.143Z",
+      "role": "system",
+      "content": "[{\"role\":\"system\",\"content\":\"You are lee-code, a CLI coding assistant.\\n\\nYou have these tools:\\n- readFile(path): Read a file\\n- searchFiles(pattern): Find files using glob \\n- runCommand(command): Run a shell command\\n\\nIMPORTANT: Whe\"},{\"role\":\"user\",\"content\":\"I would like to know in my current ...",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 7
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:38.381Z",
+      "role": "assistant",
+      "content": "{\"content\":\":[{\",\"tool_calls\":[{\"id\":\"call_8\",\"name\":\"readFile\",\"arguments\":{\"path\":\"/Users/lirenxn/Code/lee-code/src/llm.ts\"}}],\"version\":\"1.0\"}",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 7,
+      "duration": 2238
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:38.384Z",
+      "role": "user",
+      "content": "I would like to know in my current folder how does ths typescript project do chat loop with llm, summarise how it works in 200 words",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 8
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:38.384Z",
+      "role": "system",
+      "content": "[{\"role\":\"system\",\"content\":\"You are lee-code, a CLI coding assistant.\\n\\nYou have these tools:\\n- readFile(path): Read a file\\n- searchFiles(pattern): Find files using glob \\n- runCommand(command): Run a shell command\\n\\nIMPORTANT: Whe\"},{\"role\":\"user\",\"content\":\"I would like to know in my current ...",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 8
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:46.679Z",
+      "role": "assistant",
+      "content": "{\"content\":\":[{\",\"tool_calls\":[{\"id\":\"call_9\",\"name\":\"readFile\",\"arguments\":{\"path\":\"/Users/lirenxn/Code/lee-code/src/cli.ts\"}}],\"version\":\"1.0\"}",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 8,
+      "duration": 8295
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:46.680Z",
+      "role": "user",
+      "content": "I would like to know in my current folder how does ths typescript project do chat loop with llm, summarise how it works in 200 words",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 9
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:46.681Z",
+      "role": "system",
+      "content": "[{\"role\":\"system\",\"content\":\"You are lee-code, a CLI coding assistant.\\n\\nYou have these tools:\\n- readFile(path): Read a file\\n- searchFiles(pattern): Find files using glob \\n- runCommand(command): Run a shell command\\n\\nIMPORTANT: Whe\"},{\"role\":\"user\",\"content\":\"I would like to know in my current ...",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 9
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:49.646Z",
+      "role": "assistant",
+      "content": "{\"content\":\":[{\",\"tool_calls\":[{\"id\":\"call_10\",\"name\":\"readFile\",\"arguments\":{\"path\":\"/Users/lirenxn/Code/lee-code/src/cli.ts\"}}],\"version\":\"1.0\"}",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 9,
+      "duration": 2965
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:49.649Z",
+      "role": "user",
+      "content": "I would like to know in my current folder how does ths typescript project do chat loop with llm, summarise how it works in 200 words",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 10
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:15:49.649Z",
+      "role": "system",
+      "content": "[{\"role\":\"system\",\"content\":\"You are lee-code, a CLI coding assistant.\\n\\nYou have these tools:\\n- readFile(path): Read a file\\n- searchFiles(pattern): Find files using glob \\n- runCommand(command): Run a shell command\\n\\nIMPORTANT: Whe\"},{\"role\":\"user\",\"content\":\"I would like to know in my current ...",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 10
+    },
+    {
+      "sessionId": "lee-1778364903380-a6uc8p",
+      "timestamp": "2026-05-09T22:16:48.526Z",
+      "role": "assistant",
+      "content": "{\"content\":\":[{\",\"tool_calls\":[{\"id\":\"call_11\",\"name\":\"readFile\",\"arguments\":{\"path\":\"/Users/lirenxn/Code/lee-code/src/cli.ts\"}}],\"version\":\"1.0\"}",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "iteration": 10,
+      "duration": 58877
+    }
+  ]
+}

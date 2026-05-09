@@ -106,6 +106,21 @@ describe("Tool Execution", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe("Missing command argument");
   });
+
+  it("tool result added to messages with role tool", async () => {
+    const messages: { role: string; content: string; toolCallId?: string }[] = [];
+    
+    registerTool("searchFiles", async () => ({ success: true, result: '["a.ts"]' }));
+    const fn = getTool("searchFiles")!;
+    const result = await fn({ pattern: "*.ts" });
+    
+    const toolMsg = { role: "tool", content: result.result || "", toolCallId: "call_1" };
+    messages.push({ role: "assistant", content: '{"tool_calls":[...]}' });
+    messages.push(toolMsg);
+    
+    expect(messages.find(m => m.role === "tool")).toBeDefined();
+    expect(messages.find(m => m.toolCallId === "call_1")).toBeDefined();
+  });
 });
 
 describe("Tool Message Role", () => {

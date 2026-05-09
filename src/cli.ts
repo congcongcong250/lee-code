@@ -184,10 +184,12 @@ loadingSpinner.stop();
               const raw = result.success ? (result.result || "") : (result.error || "Error");
               const truncated = typeof raw === "string" && raw.length > 200 ? raw.slice(0, 200) + "..." : raw;
               printResult(truncated);
+              logLLM("tool_result", truncated, { provider, model, iteration: i + 1, toolCalls: tc.name });
               messages.push({ role: "assistant", content: respContent });
               messages.push({ role: "tool", content: truncated, toolCallId: tc?.id || "call_0" });
             }
           }
+          debug("Tool results added to messages", { count: messages.length });
           continue;
         }
         
@@ -236,6 +238,7 @@ loadingSpinner.stop();
             messages.push({ role: "user", content: `Unknown tool: ${tc.name}` });
           }
         }
+        debug("Tool results added to messages", { count: messages.length });
       } else {
         return respContent;
       }
