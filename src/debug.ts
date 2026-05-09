@@ -61,7 +61,7 @@ export function log(level: LogLevel, message: string, data?: unknown): void {
     error: "❌",
   }[level];
   
-  console.log(`${formatTimestamp()} ${prefix} ${message}`, data ? JSON.stringify(data).slice(0, 200) : "");
+  console.log(`${formatTimestamp()} ${prefix} ${message}`, data ? JSON.stringify(data) : "");
 }
 
 export function debug(message: string, data?: unknown): void {
@@ -142,7 +142,7 @@ export function logLLM(
   // In verbose mode, also log to console
   if (verboseMode) {
     const roleLabel = { user: "❯", assistant: "🤖", system: "⚙️", tool: "🔧", tool_result: "✅" }[role];
-    console.log(`${roleLabel} ${truncated.slice(0, 200)}`);
+    console.log(`${roleLabel} ${content}`);
   }
 }
 
