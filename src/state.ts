@@ -7,7 +7,7 @@ export interface AppState {
 
 let state: AppState = {
   provider: "openrouter",
-  model: "openrouter/free",
+  model: "nvidia/nemotron-3-super-120b-a12b:free",
   customBaseUrl: "",
   apiKey: "",
 };
