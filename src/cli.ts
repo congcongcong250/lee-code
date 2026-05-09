@@ -11,6 +11,7 @@ import { loadProjectContext } from "./context";
 import { searchFiles } from "./fileOps";
 import { runCommand } from "./shell";
 import { COLORS, printHeader, printAssistant, printTool, printResult, printError, printSuccess, createSpinner, enableColors } from "./ui";
+import { parseSchemaResponse } from "./schema";
 import { getState, setProvider, setModel } from "./state";
 
 enableColors();
@@ -74,26 +75,65 @@ Respond concisely. Use tools when needed.`;
       loadingSpinner.start();
       const startTime = Date.now();
       const response: ChatResponse = await chat(messages, cfg);
-      loadingSpinner.stop();
+loadingSpinner.stop();
       const duration = Date.now() - startTime;
       
       const respContent = response.message.content;
       logLLM("assistant", respContent, { provider, model, iteration: i + 1, duration });
       saveLLMLogs();
-
+      
+      // Try to parse schema response for schema-mode models
+      const schemaResp = parseSchemaResponse(respContent);
+      if (schemaResp) {
+        // For schema responses, show message and check status
+        const msg = schemaResp.content?.slice(0, 500) || "";
+        if (msg) {
+          printAssistant(msg);
+        }
+        
+        // Handle status - end loop if finished/error, continue if continue
+        if (schemaResp.status === "finished" || schemaResp.status === "error") {
+          if (schemaResp.status === "error") {
+            printError(msg || "Error from model");
+          }
+          return msg;
+        }
+        
+        // If status is "continue" or "ask_user", process tool_calls
+        const toolCalls = schemaResp.tool_calls || [];
+        if (toolCalls.length > 0) {
+          console.log("");
+          printTool(toolCalls.map(tc => `${tc.name}(${JSON.stringify(tc.arguments).slice(0, 50)})`).join(", "));
+          
+          for (const tc of toolCalls) {
+            const fn = getTool(tc.name);
+            if (fn) {
+              const result = await fn(tc.arguments);
+              const raw = result.success ? (result.result || "") : (result.error || "Error");
+              const truncated = typeof raw === "string" && raw.length > 200 ? raw.slice(0, 200) + "..." : raw;
+              printResult(truncated);
+              messages.push({ role: "assistant", content: respContent });
+              messages.push({ role: "user", content: truncated });
+            }
+          }
+          continue;
+        }
+        
+        // Schema says continue but no tools - return message
+        return msg;
+      }
+      
+      // Non-schema response - show content
       const displayContent = respContent.slice(0, 500);
       if (displayContent) {
         printAssistant(displayContent);
-        if (respContent.length > 500) {
-          console.log(`${COLORS.dim}... [truncated ${respContent.length - 500} chars]${COLORS.reset}`);
-        }
       }
       
+      // Try tool calls
       let toolCalls = response.toolCalls || [];
       if (toolCalls.length === 0) toolCalls = parseFunctionCalls(response);
       if (toolCalls.length === 0) {
         toolCalls = parseToolCallsFromText(response.message.content, Object.keys(listTools()));
-        debug(`Iteration ${i + 1}: Fuzzy parsed`, { count: toolCalls.length, parsed: toolCalls.map(t => t.name) });
       }
       
       if (toolCalls.length > 0) {
