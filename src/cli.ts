@@ -85,21 +85,13 @@ loadingSpinner.stop();
       // Try to parse schema response for schema-mode models
       const schemaResp = parseSchemaResponse(respContent);
       if (schemaResp) {
-        // For schema responses, show message and check status
+        // For schema responses, show message
         const msg = schemaResp.content?.slice(0, 500) || "";
         if (msg) {
           printAssistant(msg);
         }
         
-        // Handle status - end loop if finished/error, continue if continue
-        if (schemaResp.status === "finished" || schemaResp.status === "error") {
-          if (schemaResp.status === "error") {
-            printError(msg || "Error from model");
-          }
-          return msg;
-        }
-        
-        // If status is "continue" or "ask_user", process tool_calls
+        // Extract tool_calls from schema JSON
         const toolCalls = schemaResp.tool_calls || [];
         if (toolCalls.length > 0) {
           console.log("");
@@ -119,7 +111,7 @@ loadingSpinner.stop();
           continue;
         }
         
-        // Schema says continue but no tools - return message
+        // Schema has content but no tools - return message
         return msg;
       }
       
