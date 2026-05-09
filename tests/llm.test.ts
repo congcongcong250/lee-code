@@ -27,6 +27,45 @@ describe("Schema Response Parsing", () => {
     expect(result!.tool_calls![0].name).toBe("searchFiles");
   });
 
+  it("parses tool_calls with path argument", () => {
+    const input = JSON.stringify({
+      content: "Searching",
+      version: "1.0",
+      tool_calls: [
+        { id: "call_1", name: "searchFiles", arguments: { path: "**/*.ts" } }
+      ]
+    });
+    const result = parseSchemaResponse(input);
+    expect(result).not.toBeNull();
+    expect(result!.tool_calls![0].arguments.path).toBe("**/*.ts");
+  });
+
+  it("parses tool_calls with command argument", () => {
+    const input = JSON.stringify({
+      content: "Running",
+      version: "1.0",
+      tool_calls: [
+        { id: "call_1", name: "runCommand", arguments: { command: "ls -la" } }
+      ]
+    });
+    const result = parseSchemaResponse(input);
+    expect(result).not.toBeNull();
+    expect(result!.tool_calls![0].arguments.command).toBe("ls -la");
+  });
+
+  it("parses readFile with filePath argument", () => {
+    const input = JSON.stringify({
+      content: "Reading",
+      version: "1.0",
+      tool_calls: [
+        { id: "call_1", name: "readFile", arguments: { filePath: "src/cli.ts" } }
+      ]
+    });
+    const result = parseSchemaResponse(input);
+    expect(result).not.toBeNull();
+    expect(result!.tool_calls![0].arguments.filePath).toBe("src/cli.ts");
+  });
+
   it("parses content with tool_calls in code block", () => {
     const input = "```json\n" + JSON.stringify({
       content: "Found files",

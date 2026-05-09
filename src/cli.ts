@@ -18,7 +18,8 @@ enableColors();
 
 registerTool("searchFiles", async (args) => {
   try {
-    const pattern = args.pattern as string;
+    const pattern = (args.pattern || args.path) as string;
+    if (!pattern) return { success: false, error: "Missing pattern argument" };
     const files = await searchFiles(pattern);
     return { success: true, result: JSON.stringify(files) };
   } catch (e: any) {
@@ -28,7 +29,8 @@ registerTool("searchFiles", async (args) => {
 
 registerTool("readFile", async (args) => {
   try {
-    const filePath = args.path as string;
+    const filePath = (args.path || args.filePath) as string;
+    if (!filePath) return { success: false, error: "Missing path argument" };
     const result = await readFile(filePath);
     if (result.success) {
       return { success: true, result: result.data || "" };
@@ -42,7 +44,8 @@ registerTool("readFile", async (args) => {
 
 registerTool("runCommand", async (args) => {
   try {
-    const command = args.command as string;
+    const command = (args.command || args.cmd) as string;
+    if (!command) return { success: false, error: "Missing command argument" };
     const result = await runCommand(command);
     const output = result.success 
       ? (result.stdout || "") 

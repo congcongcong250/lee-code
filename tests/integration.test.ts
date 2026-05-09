@@ -60,3 +60,64 @@ describe("Tool Message Role", () => {
     expect(msg.toolCallId).toBe("call_1");
   });
 });
+
+describe("Tool Argument Aliasing", () => {
+  beforeEach(() => { clearTools(); });
+
+  it("searchFiles accepts path argument", async () => {
+    let captured = "";
+    registerTool("searchFiles", async (args) => {
+      captured = args.pattern || args.path || "";
+      return { success: true, result: `captured: ${captured}` };
+    });
+    const fn = getTool("searchFiles")!;
+    const result = await fn({ path: "**/*.ts" });
+    expect(captured).toBe("**/*.ts");
+  });
+
+  it("searchFiles returns error for empty arguments", async () => {
+    registerTool("searchFiles", async (args) => {
+      const pattern = (args.pattern || args.path) as string;
+      if (!pattern) return { success: false, error: "Missing pattern argument" };
+      return { success: true, result: "ok" };
+    });
+    const fn = getTool("searchFiles")!;
+    const result = await fn({});
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Missing pattern argument");
+  });
+
+  it("readFile accepts filePath argument", async () => {
+    let captured = "";
+    registerTool("readFile", async (args) => {
+      captured = (args.path || args.filePath) as string;
+      return { success: true, result: captured };
+    });
+    const fn = getTool("readFile")!;
+    const result = await fn({ filePath: "src/cli.ts" });
+    expect(captured).toBe("src/cli.ts");
+  });
+
+  it("runCommand accepts cmd argument", async () => {
+    let captured = "";
+    registerTool("runCommand", async (args) => {
+      captured = (args.command || args.cmd) as string;
+      return { success: true, result: captured };
+    });
+    const fn = getTool("runCommand")!;
+    const result = await fn({ cmd: "ls -la" });
+    expect(captured).toBe("ls -la");
+  });
+
+  it("runCommand returns error for empty command", async () => {
+    registerTool("runCommand", async (args) => {
+      const command = (args.command || args.cmd) as string;
+      if (!command) return { success: false, error: "Missing command argument" };
+      return { success: true, result: "ok" };
+    });
+    const fn = getTool("runCommand")!;
+    const result = await fn({});
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Missing command argument");
+  });
+});

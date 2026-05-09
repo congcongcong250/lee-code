@@ -42,8 +42,18 @@ export const SCHEMA_JSON = {
         type: "object" as const,
         properties: {
           id: { type: "string" as const, description: "Unique call identifier" },
-          name: { type: "string" as const, description: "Tool name to execute" },
-          arguments: { type: "object" as const, description: "Arguments for the tool" },
+          name: { type: "string" as const, description: "Tool name: searchFiles, readFile, or runCommand" },
+          arguments: { 
+            type: "object" as const, 
+            description: "Tool arguments",
+            properties: {
+              path: { type: "string", description: "File path or glob pattern" },
+              pattern: { type: "string", description: "Glob pattern for searchFiles" },
+              filePath: { type: "string", description: "File path for readFile" },
+              command: { type: "string", description: "Shell command for runCommand" },
+              cmd: { type: "string", description: "Shell command for runCommand" },
+            },
+          },
         },
         required: ["id", "name", "arguments"],
       },
