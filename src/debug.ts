@@ -128,7 +128,7 @@ export function logLLM(
   }
 ): void {
   // Truncate content for logging
-  const truncated = content.length > 300 ? content.slice(0, 300) + "..." : content;
+  const truncated = content.length > 300 ? content.slice(0, 300) + "......" + content.slice(-100) : content;
   const entry: LLMEntry = {
     sessionId: getSessionId(),
     timestamp: new Date().toISOString(),
@@ -142,7 +142,7 @@ export function logLLM(
   // In verbose mode, also log to console
   if (verboseMode) {
     const roleLabel = { user: "❯", assistant: "🤖", system: "⚙️", tool: "🔧", tool_result: "✅" }[role];
-    console.log(`${roleLabel} ${content}`);
+    console.log(`${roleLabel} ${truncated}`);
   }
 }
 

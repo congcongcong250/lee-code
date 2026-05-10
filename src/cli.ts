@@ -157,7 +157,7 @@ Respond concisely. Use tools when needed.`;
     return { messages: newMessages, toolCount: toolCalls.length };
   }
 
-let messages: ChatMessage[] = [
+  let messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     ...history,
     { role: "user", content: userInput },
@@ -192,20 +192,20 @@ loadingSpinner.stop();
       const schemaResp = parseSchemaResponse(respContent);
       if (schemaResp) {
         // For schema responses, show message
-        const msg = schemaResp.content?.slice(0, 500) || "";
+        const msg = schemaResp.content || "";
         if (msg) {
           printAssistant(msg);
         }
         
-// Extract tool_calls from schema JSON
+        // Extract tool_calls from schema JSON
         const toolCalls = schemaResp.tool_calls || [];
         if (toolCalls.length > 0) {
           console.log("");
           printTool(toolCalls.map(tc => `${tc.name}(${JSON.stringify(tc.arguments).slice(0, 50)})`).join(", "));
           
           const { messages: toolMsgs, toolCount } = await executeToolCalls(toolCalls, i + 1);
-          messages.push(...toolMsgs);
           messages.push({ role: "assistant", content: respContent });
+          messages.push(...toolMsgs);
           debug(`Iteration ${i + 1}: Added ${toolCount + 1} messages`, { totalMessages: messages.length });
           saveLLMLogs();
           continue;
@@ -228,14 +228,14 @@ loadingSpinner.stop();
         toolCalls = parseToolCallsFromText(response.message.content, Object.keys(listTools()));
       }
       
-if (toolCalls.length > 0) {
+      if (toolCalls.length > 0) {
         console.log("");
         printTool(toolCalls.map(tc => `${tc.name}(${JSON.stringify(tc.arguments).slice(0, 50)})`).join(", "));
         
         debug("Executing tools", { count: toolCalls.length });
         const { messages: toolMsgs, toolCount } = await executeToolCalls(toolCalls, i + 1);
-        messages.push(...toolMsgs);
         messages.push({ role: "assistant", content: respContent });
+        messages.push(...toolMsgs);
         debug(`Iteration ${i + 1}: Added ${toolCount + 1} messages`, { totalMessages: messages.length });
         saveLLMLogs();
       } else {
