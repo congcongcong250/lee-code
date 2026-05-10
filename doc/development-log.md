@@ -359,28 +359,123 @@ vLLM converts MiniMax's internal XML-ish tool format → proper `tool_calls` API
 
 ---
 
-## 2026-05-10 23:31 - Critical Tool Calling Fixes After Refactoring
+## 2026-05-10 23:55 - Critical Tool Calling Fixes After Refactoring (COMPREHENSIVE)
 
 **Iteration**: Multiple commits (`12a39dd` through `7162c95`)
-**Problem**: After MiniMax M2.5 refactoring, tool calling was completely broken. Multiple critical bugs required manual fixes through 12+ commits.
-**Solution**: Fixed 7 critical bugs:
+**Problem**: After MiniMax M2.5 refactoring, tool calling was COMPLETELY BROKEN. User had to manually fix 7 critical bugs.
+**Solution**: Fixed through 12+ commits:
 1. Tools never registered - added `registerTool()` calls at CLI startup
 2. Empty string content parsing failed - changed `parsed.content &&` to `parsed.content !== undefined`
-3. Tool schemas not sent to LLM - added schema definitions when registering tools
-4. Wrong message order -assistant now pushed before tool results
+3. Tool schemas not sent to LLM - added schema definitions with parameters
+4. Wrong message order - assistant now pushed BEFORE tool results
 5. Duplicate assistant messages - moved outside loop
-6. Duplicate code - extracted `executeToolCalls()` function
-7. Tool argument mismatches - accept multiple property names
+6. Duplicate code - extracted `executeToolCalls()` reusable function
+7. Tool argument mismatches - accept multiple property names (pattern/path, command/cmd)
 
-**Caveat**: Post-refactoring verification is critical - core functionality was silently broken.
-**Solved**: ✓
-**Not Solved**: -
-**Reason/Lesson**: After any refactoring, ALWAYS verify core functionality works. Unit tests existed but didn't catch that tools were never registered or that message accumulation was broken. Key bugs:
-- `registerTool()` was defined but NEVER CALLED
-- Empty string `""` is falsy - used wrong check
-- Functions registered but no parameter schemas defined
-- Message chain order was wrong (tool before assistant)
+**Caveat**: NONE - these were all critical bugs that should NEVER have happened
 
-These bugs were invisible without integration testing the full agent loop. Test coverage showed 65 tests but only ~18% tested actual system behavior - most were trivial unit tests that didn't verify real functionality.
+**Solved**: ✓ (but at high manual cost)
+
+**Not Solved**: 
+- No try-catch in tool execution (throws will crash function)
+- Unknown tool handling still inconsistent between paths
+- No E2E verification that tool results reach LLM
+
+---
+
+### RED TEAM: What You Had to Fix Manually (Root Cause Analysis)
+
+#### Bug 1: Tools Never Registered
+- **Root Cause**: Post-refactoring, `registerTool()` was defined but NEVER CALLED
+- **Why**: Function existed in tools.ts but CLI never called it
+- **Fix**: Added registration at CLI startup in cli.ts
+- **Why Forced to Fix Manually**: No test verified tools were registered and callable
+
+#### Bug 2: Empty String Schema Parsing
+- **Root Cause**: `parsed.content && parsed.version` - empty string "" is FALSY in JavaScript!
+- **Why**: Used truthy check instead of explicit undefined check  
+- **Fix**: Changed to `parsed.content !== undefined && parsed.version`
+- **Why Forced to Fix Manually**: Edge case not tested - tests used non-empty strings
+
+#### Bug 3: Tool Schemas Not Sent
+- **Root Cause**: `registerTool(fn)` stored function but NOT schema definition
+- **Why**: No schema parameter in registration, no `getToolSchema()` function
+- **Fix**: Added `registerTool(name, fn, schema)` with schema parameter
+- **Why Forced to Fix Manually**: No test verified LLM received correct parameter names
+
+#### Bug 4: Wrong Message Order  
+- **Root Cause**: Push inside loop - tool pushed BEFORE assistant
+- **Why**: Loop structure confused placement of messages.push()
+- **Fix**: Pushed assistant first, then tool results
+- **Why Forced to Fix Manually**: No test verified actual message ORDER in chain
+
+#### Bug 5: Duplicate Assistant Messages
+- **Root Cause**: `messages.push(assistant)` was INSIDE the tool loop
+- **Why**: Each iteration = one more assistant message
+- **Fix**: Moved outside loop
+- **Why Forced to Fix Manually**: No test counted messages after multiple tools
+
+#### Bug 6: Duplicate Code
+- **Root Cause**: Identical tool execution code in 2 places (schema path + non-schema path)
+- **Why**: Copied logic instead of extracting function
+- **Fix**: Extracted `executeToolCalls()` function
+- **Why Forced to Fix Manually**: No abstraction - just copy-paste
+
+#### Bug 7: Argument Name Mismatch
+- **Root Cause**: Model sent `path`, tool expected `pattern`
+- **Why**: System prompt said one thing, code expected another
+- **Fix**: Accept both: `(args.pattern || args.path)`
+- **Why Forced to Fix Manually**: No alignment between prompt and code
+
+---
+
+### RED TEAM: What Was Missed
+
+1. **No integration test for full agent loop** - Unit tests existed but none tested full flow
+2. **No try-catch in tool execution** - If tool throws, entire function crashes
+3. **No verification that tool results REACH LLM** - Trusting but not verifying
+4. **Unknown tool handling inconsistent** - Schema path silently skips, non-schema adds error message
+5. **Test coverage is misleading** - 65 tests but ~18% meaningful (rest are trivial)
+
+---
+
+### KEY LEARNINGS
+
+1. **After ANY refactoring, MUST verify core functionality works**
+   - Not just "tests pass" - need actual E2E verification
+
+2. **Unit tests are NOT enough**
+   - Need integration tests that test the full agent loop
+   - Need tests that verify message ORDER and CONTENT
+
+3. **Be explicit with JavaScript checks**
+   - Use `!== undefined` not truthy checks
+   - Test edge cases: "", null, undefined
+
+4. **Trust but verify**
+   - Don't assume schema enforcement works - test it
+   - Don't assume tool results reach LLM - verify logs
+
+5. **Extract reusable code**
+   - Don't duplicate logic - creates maintenance nightmares
+
+6. **Log at each step for debugging**
+   - Would have caught these issues much faster
+
+---
+
+### What Tests Should Have Caught These Bugs
+
+1. Test that calls a tool and verifies tool result IS in next LLM message
+2. Test that multiple tools = ONE assistant message (not N duplicates)
+3. Test with empty string content ""
+4. Test that schemas DEFINITIONS are accessible (not just functions)
+5. Test actual message chain order after tool execution
+
+---
+
+### Final Status: 2026-05-10 23:55
+
+Tool calling NOW WORKS but required 12+ manual fixes. This should have been caught by proper integration testing, not by manual debugging.
 
 ---
