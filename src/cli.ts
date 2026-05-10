@@ -172,8 +172,8 @@ loadingSpinner.stop();
         const toolCalls = schemaResp.tool_calls || [];
         if (toolCalls.length > 0) {
           console.log("");
-          printTool(toolCalls.map(tc => `${tc.name}(${JSON.stringify(tc.arguments).slice(0, 50)})`).join(", "));
-          
+printTool(toolCalls.map(tc => `${tc.name}(${JSON.stringify(tc.arguments).slice(0, 50)})`).join(", "));
+           
           for (const tc of toolCalls) {
             const fn = getTool(tc.name);
             if (fn) {
@@ -182,14 +182,14 @@ loadingSpinner.stop();
               const displayResult = fullResult.length > 200 ? fullResult.slice(0, 200) + "..." : fullResult;
               printResult(displayResult);
               logLLM("tool_result", displayResult, { provider, model, iteration: i + 1, toolCalls: tc.name });
-              
-              messages.push({ role: "assistant", content: respContent });
               messages.push({ role: "tool", content: fullResult, toolCallId: tc?.id || "call_0" });
-              debug(`Iteration ${i + 1}: Added 2 messages`, { totalMessages: messages.length });
-              saveLLMLogs();
-              continue;
             }
           }
+          // Add assistant message AFTER processing all tools
+          messages.push({ role: "assistant", content: respContent });
+          debug(`Iteration ${i + 1}: Added ${2 * toolCalls.length + 1} messages`, { totalMessages: messages.length });
+          saveLLMLogs();
+          continue;
         }
         
         // Schema has content but no tools - return message
@@ -209,7 +209,7 @@ loadingSpinner.stop();
         toolCalls = parseToolCallsFromText(response.message.content, Object.keys(listTools()));
       }
       
-      if (toolCalls.length > 0) {
+if (toolCalls.length > 0) {
         console.log("");
         printTool(toolCalls.map(tc => `${tc.name}(${JSON.stringify(tc.arguments).slice(0, 50)})`).join(", "));
         
@@ -225,17 +225,16 @@ loadingSpinner.stop();
             
             printResult(displayResult);
             logLLM("tool_result", displayResult, { provider, model, iteration: i + 1, toolCalls: tc.name });
-            saveLLMLogs();
-            
-            messages.push({ role: "assistant", content: respContent });
             messages.push({ role: "tool", content: fullResult, toolCallId: tc?.id || "call_0" });
-            debug(`Iteration ${i + 1}: Added 2 messages`, { totalMessages: messages.length });
           } else {
             printError(`Unknown tool: ${tc.name}`);
             messages.push({ role: "user", content: `Unknown tool: ${tc.name}` });
           }
         }
-        debug("Tool results added to messages", { count: messages.length });
+        // Add assistant message AFTER processing all tools
+        messages.push({ role: "assistant", content: respContent });
+        debug(`Iteration ${i + 1}: Added ${2 + toolCalls.length} messages`, { totalMessages: messages.length });
+        saveLLMLogs();
       } else {
         return respContent;
       }
