@@ -64,7 +64,7 @@ export function parseSchemaResponse(content: string): SchemaResponse | null {
   }
   try {
     const parsed = JSON.parse(jsonStr);
-    if (parsed.content && parsed.version) {
+    if (parsed.content !== undefined && parsed.version) {
       return parsed as SchemaResponse;
     }
   } catch {}
