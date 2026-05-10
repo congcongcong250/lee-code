@@ -128,7 +128,36 @@ ${context}
 
 Respond concisely. Use tools when needed.`;
 
-  let messages: ChatMessage[] = [
+  async function executeToolCalls(
+    toolCalls: { id?: string; name: string; arguments: Record<string, unknown> }[],
+    iteration: number
+  ): Promise<{ messages: ChatMessage[]; toolCount: number }> {
+    const state = getState();
+    const provider = state.provider as LLMProvider;
+    const model = state.model;
+    const newMessages: ChatMessage[] = [];
+    
+    for (const tc of toolCalls) {
+      const fn = getTool(tc.name);
+      if (fn) {
+        const result = await fn(tc.arguments);
+        const fullResult = result.success ? (result.result || "") : (result.error || "Error");
+        const displayResult = fullResult.length > 200 
+          ? fullResult.slice(0, 200) + "......" + fullResult.slice(-50) 
+          : fullResult;
+        printResult(displayResult);
+        logLLM("tool_result", fullResult, { provider, model, iteration, toolCalls: tc.name });
+        newMessages.push({ role: "tool", content: fullResult, toolCallId: tc?.id || "call_0" });
+      } else {
+        printError(`Unknown tool: ${tc.name}`);
+        newMessages.push({ role: "user", content: `Unknown tool: ${tc.name}` });
+      }
+    }
+    
+    return { messages: newMessages, toolCount: toolCalls.length };
+  }
+
+let messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     ...history,
     { role: "user", content: userInput },
@@ -168,26 +197,16 @@ loadingSpinner.stop();
           printAssistant(msg);
         }
         
-        // Extract tool_calls from schema JSON
+// Extract tool_calls from schema JSON
         const toolCalls = schemaResp.tool_calls || [];
         if (toolCalls.length > 0) {
           console.log("");
-printTool(toolCalls.map(tc => `${tc.name}(${JSON.stringify(tc.arguments).slice(0, 50)})`).join(", "));
-           
-          for (const tc of toolCalls) {
-            const fn = getTool(tc.name);
-            if (fn) {
-              const result = await fn(tc.arguments);
-              const fullResult = result.success ? (result.result || "") : (result.error || "Error");
-              const displayResult = fullResult.length > 200 ? fullResult.slice(0, 200) + "..." : fullResult;
-              printResult(displayResult);
-              logLLM("tool_result", displayResult, { provider, model, iteration: i + 1, toolCalls: tc.name });
-              messages.push({ role: "tool", content: fullResult, toolCallId: tc?.id || "call_0" });
-            }
-          }
-          // Add assistant message AFTER processing all tools
+          printTool(toolCalls.map(tc => `${tc.name}(${JSON.stringify(tc.arguments).slice(0, 50)})`).join(", "));
+          
+          const { messages: toolMsgs, toolCount } = await executeToolCalls(toolCalls, i + 1);
+          messages.push(...toolMsgs);
           messages.push({ role: "assistant", content: respContent });
-          debug(`Iteration ${i + 1}: Added ${2 * toolCalls.length + 1} messages`, { totalMessages: messages.length });
+          debug(`Iteration ${i + 1}: Added ${toolCount + 1} messages`, { totalMessages: messages.length });
           saveLLMLogs();
           continue;
         }
@@ -213,27 +232,11 @@ if (toolCalls.length > 0) {
         console.log("");
         printTool(toolCalls.map(tc => `${tc.name}(${JSON.stringify(tc.arguments).slice(0, 50)})`).join(", "));
         
-        for (const tc of toolCalls) {
-          debug("Executing tool", { name: tc.name, args: tc.arguments });
-          logLLM("tool", JSON.stringify(tc), { provider, model, iteration: i + 1, toolCalls: tc.name });
-          
-          const fn = getTool(tc.name);
-          if (fn) {
-            const result = await fn(tc.arguments);
-            const fullResult = result.success ? (result.result || "") : (result.error || "Unknown error");
-            const displayResult = fullResult.length > 200 ? fullResult.slice(0, 200) + "..." : fullResult;
-            
-            printResult(displayResult);
-            logLLM("tool_result", displayResult, { provider, model, iteration: i + 1, toolCalls: tc.name });
-            messages.push({ role: "tool", content: fullResult, toolCallId: tc?.id || "call_0" });
-          } else {
-            printError(`Unknown tool: ${tc.name}`);
-            messages.push({ role: "user", content: `Unknown tool: ${tc.name}` });
-          }
-        }
-        // Add assistant message AFTER processing all tools
+        debug("Executing tools", { count: toolCalls.length });
+        const { messages: toolMsgs, toolCount } = await executeToolCalls(toolCalls, i + 1);
+        messages.push(...toolMsgs);
         messages.push({ role: "assistant", content: respContent });
-        debug(`Iteration ${i + 1}: Added ${2 + toolCalls.length} messages`, { totalMessages: messages.length });
+        debug(`Iteration ${i + 1}: Added ${toolCount + 1} messages`, { totalMessages: messages.length });
         saveLLMLogs();
       } else {
         return respContent;
