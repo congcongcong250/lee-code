@@ -140,11 +140,8 @@ Respond concisely. Use tools when needed.`;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     try {
-      debug(`Iteration ${i + 1}: Calling LLM`, { provider, model, toolsCount: listTools().length });
-      logLLM("user", userInput, { provider, model, iteration: i + 1 });
-      
-      const msgsForLog = messages.map(m => ({ role: m.role, content: m.content.slice(0, 200) }));
-      logLLM("system", JSON.stringify(msgsForLog), { provider, model, iteration: i + 1 });
+      const msgCountBefore = messages.length;
+      debug(`Iteration ${i + 1}: Calling LLM`, { provider, model, messagesIn: msgCountBefore });
       
       const cfg: any = { provider, model, tools: listToolSchemas() };
       if (state.customBaseUrl) cfg.baseUrl = state.customBaseUrl;
@@ -181,16 +178,18 @@ loadingSpinner.stop();
             const fn = getTool(tc.name);
             if (fn) {
               const result = await fn(tc.arguments);
-              const raw = result.success ? (result.result || "") : (result.error || "Error");
-              const truncated = typeof raw === "string" && raw.length > 200 ? raw.slice(0, 200) + "..." : raw;
-              printResult(truncated);
-              logLLM("tool_result", truncated, { provider, model, iteration: i + 1, toolCalls: tc.name });
+              const fullResult = result.success ? (result.result || "") : (result.error || "Error");
+              const displayResult = fullResult.length > 200 ? fullResult.slice(0, 200) + "..." : fullResult;
+              printResult(displayResult);
+              logLLM("tool_result", displayResult, { provider, model, iteration: i + 1, toolCalls: tc.name });
+              
               messages.push({ role: "assistant", content: respContent });
-              messages.push({ role: "tool", content: truncated, toolCallId: tc?.id || "call_0" });
+              messages.push({ role: "tool", content: fullResult, toolCallId: tc?.id || "call_0" });
+              debug(`Iteration ${i + 1}: Added 2 messages`, { totalMessages: messages.length });
+              saveLLMLogs();
+              continue;
             }
           }
-          debug("Tool results added to messages", { count: messages.length });
-          continue;
         }
         
         // Schema has content but no tools - return message
@@ -221,18 +220,16 @@ loadingSpinner.stop();
           const fn = getTool(tc.name);
           if (fn) {
             const result = await fn(tc.arguments);
-            const rawResult = result.success ? (result.result || "") : (result.error || "Unknown error");
-            const truncated = typeof rawResult === "string" && rawResult.length > 200 
-              ? rawResult.slice(0, 200) + " ... [truncated]" 
-              : rawResult;
+            const fullResult = result.success ? (result.result || "") : (result.error || "Unknown error");
+            const displayResult = fullResult.length > 200 ? fullResult.slice(0, 200) + "..." : fullResult;
             
-            printResult(truncated);
-            
-            logLLM("tool_result", truncated, { provider, model, iteration: i + 1, toolCalls: tc.name });
+            printResult(displayResult);
+            logLLM("tool_result", displayResult, { provider, model, iteration: i + 1, toolCalls: tc.name });
             saveLLMLogs();
             
             messages.push({ role: "assistant", content: respContent });
-            messages.push({ role: "tool", content: truncated, toolCallId: tc?.id || "call_0" });
+            messages.push({ role: "tool", content: fullResult, toolCallId: tc?.id || "call_0" });
+            debug(`Iteration ${i + 1}: Added 2 messages`, { totalMessages: messages.length });
           } else {
             printError(`Unknown tool: ${tc.name}`);
             messages.push({ role: "user", content: `Unknown tool: ${tc.name}` });
