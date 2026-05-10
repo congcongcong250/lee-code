@@ -29,6 +29,32 @@ lee-code is a CLI coding assistant inspired by Claude Code. It's designed to be 
 
 ---
 
+## 2026-05-10 - Critical Tool Calling Fixes After Refactoring
+
+**Iteration**: Multiple commits (`12a39dd` through `7162c95`)
+**Problem**: After MiniMax M2.5 refactoring, tool calling was completely broken. Multiple critical bugs required manual fixes through 12+ commits.
+**Solution**: Fixed 7 critical bugs:
+1. Tools never registered - added `registerTool()` calls at CLI startup
+2. Empty string content parsing failed - changed `parsed.content &&` to `parsed.content !== undefined`
+3. Tool schemas not sent to LLM - added schema definitions when registering tools
+4. Wrong message order -assistant now pushed before tool results
+5. Duplicate assistant messages - moved outside loop
+6. Duplicate code - extracted `executeToolCalls()` function
+7. Tool argument mismatches - accept multiple property names
+
+**Caveat**: Post-refactoring verification is critical - core functionality was silently broken.
+**Solved**: ✓
+**Not Solved**: -
+**Reason/Lesson**: After any refactoring, ALWAYS verify core functionality works. Unit tests existed but didn't catch that tools were never registered or that message accumulation was broken. Key bugs:
+- `registerTool()` was defined but NEVER CALLED
+- Empty string `""` is falsy - used wrong check
+- Functions registered but no parameter schemas defined
+- Message chain order was wrong (tool before assistant)
+
+These bugs were invisible without integration testing the full agent loop. Test coverage showed 65 tests but only ~18% tested actual system behavior - most were trivial unit tests that didn't verify real functionality.
+
+---
+
 ## 2026-05-09 - Tool Parser Format 6: Simple XML Content
 
 **Iteration**: `9ab9477`
