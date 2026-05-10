@@ -13,6 +13,50 @@ describe("Schema Response Parsing", () => {
     expect(result!.version).toBe("1.0");
   });
 
+  it("parses empty content string with tool_calls - THE BUG WE FIXED", () => {
+    const input = JSON.stringify({
+      content: "",
+      version: "1.0",
+      tool_calls: [
+        { id: "call_1", name: "searchFiles", arguments: { pattern: "*.ts" } }
+      ]
+    });
+    const result = parseSchemaResponse(input);
+    expect(result).not.toBeNull();
+    expect(result!.content).toBe("");
+    expect(result!.tool_calls).toHaveLength(1);
+    expect(result!.tool_calls![0].arguments.pattern).toBe("*.ts");
+  });
+
+  it("parses whitespace content string with tool_calls", () => {
+    const input = JSON.stringify({
+      content: "   ",
+      version: "1.0",
+      tool_calls: [
+        { id: "call_1", name: "runCommand", arguments: { command: "ls" } }
+      ]
+    });
+    const result = parseSchemaResponse(input);
+    expect(result).not.toBeNull();
+    expect(result!.content).toBe("   ");
+    expect(result!.tool_calls![0].arguments.command).toBe("ls");
+  });
+
+  it("parses content with multiple tool_calls", () => {
+    const input = JSON.stringify({
+      content: "Working",
+      version: "1.0",
+      tool_calls: [
+        { id: "call_1", name: "searchFiles", arguments: { pattern: "*.ts" } },
+        { id: "call_2", name: "readFile", arguments: { path: "a.ts" } },
+        { id: "call_3", name: "runCommand", arguments: { command: "ls" } }
+      ]
+    });
+    const result = parseSchemaResponse(input);
+    expect(result).not.toBeNull();
+    expect(result!.tool_calls).toHaveLength(3);
+  });
+
   it("parses content with tool_calls", () => {
     const input = JSON.stringify({
       content: "Searching files",
@@ -66,6 +110,49 @@ describe("Schema Response Parsing", () => {
     expect(result!.tool_calls![0].arguments.filePath).toBe("src/cli.ts");
   });
 
+  it("parses tool_calls with complex arguments", () => {
+    const input = JSON.stringify({
+      content: "",
+      version: "1.0",
+      tool_calls: [
+        { 
+          id: "call_1", 
+          name: "runCommand", 
+          arguments: { command: "grep -r 'pattern' src/**/*.ts" } 
+        }
+      ]
+    });
+    const result = parseSchemaResponse(input);
+    expect(result).not.toBeNull();
+    expect(result!.tool_calls![0].arguments.command).toBe("grep -r 'pattern' src/**/*.ts");
+  });
+
+  it("parses tool with empty arguments object", () => {
+    const input = JSON.stringify({
+      content: "",
+      version: "1.0",
+      tool_calls: [
+        { id: "call_1", name: "searchFiles", arguments: {} }
+      ]
+    });
+    const result = parseSchemaResponse(input);
+    expect(result).not.toBeNull();
+    expect(result!.tool_calls![0].arguments).toEqual({});
+  });
+
+  it("preserves tool call id correctly", () => {
+    const input = JSON.stringify({
+      content: "",
+      version: "1.0",
+      tool_calls: [
+        { id: "custom_id_123", name: "searchFiles", arguments: { pattern: "*.js" } }
+      ]
+    });
+    const result = parseSchemaResponse(input);
+    expect(result).not.toBeNull();
+    expect(result!.tool_calls![0].id).toBe("custom_id_123");
+  });
+
   it("parses content with tool_calls in code block", () => {
     const input = "```json\n" + JSON.stringify({
       content: "Found files",
@@ -86,6 +173,11 @@ describe("Schema Response Parsing", () => {
 
   it("returns null for missing version", () => {
     const input = JSON.stringify({ content: "hello" });
+    expect(parseSchemaResponse(input)).toBeNull();
+  });
+
+  it("returns null when missing content property", () => {
+    const input = JSON.stringify({ version: "1.0", tool_calls: [] });
     expect(parseSchemaResponse(input)).toBeNull();
   });
 });
