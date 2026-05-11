@@ -216,3 +216,166 @@ Specific gaps:
 The fundamentals (modular layout, multi-provider, schema-mode fallback, tool registry,
 JSONL logging) are sound enough that the project can be made safe and useful with
 focused work — most of which is captured in the Top-10 list above.
+
+---
+
+## 9. 🧭 Deep Dive — Schema vs Native: the message-array structural defect
+
+> Added 2026-05-11 after focused review of `getLLMResponse` (`src/cli.ts:111–250`)
+> and `chatOpenAI` (`src/llm.ts:60–137`) with the schema-vs-native split in mind.
+> **This is the central correctness defect of the agent loop.**
+
+### 9.1 You are running two incompatible tool-calling protocols through one array
+
+| Aspect | Native function-calling | Schema (strict-JSON envelope) |
+|---|---|---|
+| Where does the tool call live? | `assistant.tool_calls[]` — a structured field next to (often-empty) content | Embedded **inside** `assistant.content` as JSON `{content, tool_calls, version}` |
+| Where does the tool result go back? | `{role:"tool", tool_call_id, content}` | Just `{role:"user", content:"<result text>"}` (or `assistant`-role recap) — the API has no `tool` role concept here |
+| ID correlation required? | **Yes, mandatory** — assistant `tool_calls[i].id` must match a `tool` message's `tool_call_id` | **No** — there's no protocol-level correlation; the model only sees text |
+| Schema/system contract | Tool list is part of the request `tools` field | Tool list must be described in the system prompt **and** the `response_format` JSON schema |
+| Validity rules on the array | Strict ordering invariant (assistant w/ tool_calls **must** be followed by N matching tool messages before next assistant) | Free-form — anything goes, it's just text |
+
+These two are **not interchangeable**. Trying to share a single `ChatMessage[]` shape
+across them is exactly why the loop is fragile.
+
+### 9.2 What the current code actually does — and where it breaks
+
+#### Mode detection is hidden inside the provider
+`useSchema` is computed in `chatOpenAI` (`src/llm.ts:65`). The loop in
+`getLLMResponse` is **mode-agnostic** — it writes back the assistant turn the same way
+regardless. That's the root cause of the mess:
+
+```ts
+// src/cli.ts:206 / 236  — same code path for BOTH modes
+messages.push({ role: "assistant", content: respContent });
+messages.push(...toolMsgs);  // tool messages with toolCallId
+```
+
+That single push works for **neither** mode correctly.
+
+- **Native mode failure:** loses `tool_calls`. On next call,
+  `messages.map(m => ({role, content}))` (`src/llm.ts:69`) sends an `assistant` with
+  empty content and then `tool` messages — OpenAI returns
+  `400: tool messages must follow tool_calls`. **Loop breaks on iteration 2.**
+- **Schema mode failure:** the assistant's `respContent` is the **raw JSON envelope**.
+  We push that envelope into history, then push `role:"tool"` messages — but in schema
+  mode the *model has never been told* that a `tool` role exists. The schema response
+  also has no protocol path for receiving results back; the model is now staring at:
+  ```
+  assistant: {"content":"…","tool_calls":[…],"version":"1.0"}
+  tool: <result> (toolCallId="call_0")
+  ```
+  …and is asked to continue. Many schema models will repeat the envelope, nest it, or
+  hallucinate JSON because they were never trained to interpret a `tool` role inside
+  their schema-mode contract.
+
+#### `chatOpenAI` makes it worse for schema mode
+At `src/llm.ts:121` you parse the schema envelope to extract `toolCalls` — good — but
+then on `src/llm.ts:133` you also return `content: contentStr` (the raw envelope JSON).
+The caller dutifully pushes that JSON into history. The text the user *sees*
+(`schemaResp.content`) and the text *in history* (the envelope) are two different
+things.
+
+#### `tool_call_id` plumbing is broken in both modes
+- The loop attaches `toolCallId` (camelCase) — `chatOpenAI`'s serializer at
+  `src/llm.ts:69` only forwards `role` and `content`, so the field is **dropped on the
+  wire**. Native mode breaks regardless of upstream IDs.
+- In schema mode there's no `tool_call_id` concept anyway, so the field is
+  meaningless.
+
+#### Native and schema *both* try to coexist on the same request
+`src/llm.ts:82` unconditionally adds `tools` and `tool_choice:"auto"` even when
+`useSchema` is true. So in schema mode you're sending **both** a strict JSON schema and
+a tool inventory — the model is told two contradictory things ("respond in this JSON"
+and "or call these functions natively"). Behavior depends on the model: some respect
+schema, some emit native tool_calls anyway, some panic. This is why the parser has so
+many fallback formats — it's papering over an ambiguous request contract.
+
+### 9.3 Final judgement
+
+> **The mistake is not "the message array is messy" — it's that you have one array
+> trying to be two protocols.**
+
+The current `messages: ChatMessage[]` works only for the happy path of a single
+iteration on OpenAI/Groq/OpenRouter in *one* mode at a time, with one tool call. It is
+structurally incorrect for:
+
+- any second iteration in native mode (loses `tool_calls` → 400)
+- schema mode multi-turn (pollutes history with envelopes)
+- parallel tool calls (collapses ids to `"call_0"`)
+- mode switching mid-conversation (history mixes envelopes and prose)
+- any provider that isn't OpenAI-shaped (Anthropic / HF / Ollama all need different
+  shapes)
+
+**It is not just "messy" — it is the central correctness defect of the agent.** The
+schema-vs-native dual-mode design *amplifies* the defect because both modes write to
+the same array but expect different read semantics on the next turn.
+
+### 9.4 Recommended refactor
+
+1. **Separate "internal canonical history" from "wire-format messages".**
+   Keep one rich, typed internal model:
+   ```ts
+   type Turn =
+     | { role: "system"; text: string }
+     | { role: "user"; text: string }
+     | { role: "assistant"; text: string; toolCalls?: ToolCall[] }
+     | { role: "tool"; callId: string; name: string; text: string };
+   ```
+   …and let each provider+mode pair have its own **serializer** to wire format.
+
+2. **Make mode a first-class concept of the request, not a hidden flag.**
+   `cfg.mode: "native" | "schema" | "text-fuzzy"` decided **once** per call. Then:
+   - `native`: send `tools`, do **not** send `response_format`. Round-trip via
+     `assistant.tool_calls` and `tool` role with `tool_call_id`.
+   - `schema`: send `response_format` with the JSON schema, do **not** send `tools`.
+     Round-trip via `assistant.text = "<rendered prose>"` and tool results as `user`
+     messages prefixed with a stable marker (e.g.
+     `[tool_result name=readFile id=call_0]\n…`). The **system prompt** explicitly
+     teaches the model that this is how results come back.
+   - `text-fuzzy`: neither; results come back as `user` text. The fuzzy parser is the
+     last-resort.
+
+   Right now you send `tools` AND `response_format` simultaneously — pick one per
+   call.
+
+3. **Never push a raw schema envelope into history.**
+   When you parse `schemaResp` in `chatOpenAI`, return both:
+   ```ts
+   { message: { content: schemaResp.content }, toolCalls, _raw: contentStr }
+   ```
+   The loop pushes `schemaResp.content` (the *user-facing prose*) — the envelope is a
+   transport detail, not conversation.
+
+4. **Enforce the ordering invariant in code, not in your head.**
+   In native mode, when you push an `assistant` turn that has `tool_calls`, *the very
+   next pushes must be N `tool` turns whose `callId` is in that set*. A small
+   `Conversation` class with assertions catches every shape bug at the source.
+
+5. **`tool_call_id` round-trip must be real.**
+   Generated IDs from `parseToolCallsFromText` are useless because they were never
+   sent by the model. In native mode, only execute tools whose IDs the API actually
+   returned in `tool_calls[]`. In schema/fuzzy mode, IDs are decorative — don't
+   pretend otherwise; route results as labeled user text.
+
+6. **Document the mode contract in the system prompt for schema mode.**
+   In schema mode the model only knows what your system prompt tells it. Yours says
+   "You have these tools" and lists them in prose, but never tells the model how it
+   will receive **results**. Add: "Tool results will be sent back as user messages of
+   the form `[tool_result id=<id> name=<name>]\n<content>`. Use them, then continue."
+
+### 9.5 Why this collapses other bugs
+
+With the typed `Turn[]` + per-mode-per-provider serializer pattern, the following
+previously-listed defects are fixed by construction rather than by independent
+patches:
+
+- **B1** Anthropic full-history serialization → handled in Anthropic serializer
+- **B3** Ollama tool round-trip → handled in Ollama serializer
+- **B4** OpenAI `tool_call_id` drop → enforced by `Turn` shape
+- **B5** Unguarded `JSON.parse` of arguments → centralized in one place with try/catch
+- **§2 schema-envelope-in-history** → eliminated by storing parsed content, not raw
+- **Parallel tool-call id collisions** → impossible because IDs come from the API,
+  not generated client-side
+
+This is the single highest-leverage refactor in the codebase.
