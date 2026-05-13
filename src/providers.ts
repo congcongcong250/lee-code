@@ -40,7 +40,7 @@ export const PROVIDER_CONFIGS: Record<LLMProvider, LLMProviderConfig> = {
   anthropic: { baseUrl: "https://api.anthropic.com/v1", defaultModel: "claude-3-haiku-20240307" },
   groq: { baseUrl: "https://api.groq.com/openai/v1", defaultModel: "llama-3.3-70b-versatile" },
   huggingface: { baseUrl: "https://api-inference.huggingface.co", defaultModel: "meta-llama/Llama-3.1-70b-instruct" },
-  openrouter: { baseUrl: "https://openrouter.ai/api/v1", defaultModel: "nvidia/nemotron-3-super-120b-a12b:free" },
+  openrouter: { baseUrl: "https://openrouter.ai/api/v1", defaultModel: "qwen/qwen3-next-80b-a3b-instruct:free" },
 };
 
 export const DEFAULT_PROVIDER: LLMProvider = "openrouter";
@@ -58,7 +58,7 @@ export function getEnvApiKey(provider: LLMProvider): string | undefined {
 
 export function listProviders(): { name: string; defaultModel: string }[] {
   return [
-    { name: "openrouter", defaultModel: "nvidia/nemotron-3-super-120b-a12b:free" },
+    { name: "openrouter", defaultModel: "qwen/qwen3-next-80b-a3b-instruct:free" },
     { name: "groq", defaultModel: "llama-3.3-70b-versatile" },
     { name: "ollama", defaultModel: "llama3" },
     { name: "openai", defaultModel: "gpt-4o-mini" },

@@ -7,7 +7,7 @@ export interface AppState {
 
 let state: AppState = {
   provider: "openrouter",
-  model: "nvidia/nemotron-3-super-120b-a12b:free",
+  model: "qwen/qwen3-next-80b-a3b-instruct:free",
   customBaseUrl: "",
   apiKey: "",
 };
