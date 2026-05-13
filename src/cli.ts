@@ -23,6 +23,7 @@ import { getState, setProvider, setModel } from "./state";
 import { Turn } from "./conversation";
 import { getLLMResponse, spinnerWrapper } from "./agent";
 import { createConfirmGate, ConfirmGate } from "./confirm";
+import { chatStream } from "./llm";
 
 enableColors();
 
@@ -235,13 +236,29 @@ async function startInteractive() {
       console.log(`${COLORS.cyan}Project context:${COLORS.reset}`);
       console.log(projectContext);
     } else if (input.trim()) {
+      const providerForCall = state.provider as LLMProvider;
+      const supportsStreaming =
+        providerForCall === "openai" ||
+        providerForCall === "openrouter" ||
+        providerForCall === "groq";
       const result = await getLLMResponse(input, history, {
-        provider: state.provider as LLMProvider,
+        provider: providerForCall,
         model: state.model,
-        apiKey: state.apiKey || getEnvApiKey(state.provider as LLMProvider),
+        apiKey: state.apiKey || getEnvApiKey(providerForCall),
         customBaseUrl: state.customBaseUrl || undefined,
         systemPrompt,
-        withSpinner: spinnerWrapper,
+        // Use streaming when supported. The spinner is only used as a
+        // fallback for providers that we don't (yet) stream from.
+        ...(supportsStreaming
+          ? {
+              streamChat: chatStream,
+              onStreamStart: () => process.stdout.write(`${COLORS.white}`),
+              onStreamChunk: (chunk: string) => process.stdout.write(chunk),
+              onStreamEnd: () => process.stdout.write(`${COLORS.reset}\n`),
+            }
+          : {
+              withSpinner: spinnerWrapper,
+            }),
       });
       // CRITICAL: append ALL new turns (user + assistant + intermediate tool
       // round-trips) so multi-turn memory survives. Old code dropped the

@@ -1,6 +1,6 @@
 import { Turn, AssistantTurn, ToolTurn, AgentMode } from "./conversation";
 import { ToolCall, getTool, listToolSchemas } from "./tools";
-import { chat, LLMConfig, LLMProvider, getEnvApiKey, resolveMode } from "./llm";
+import { chat, chatStream, LLMConfig, LLMProvider, getEnvApiKey, resolveMode } from "./llm";
 import { debug, logLLM, saveLLMLogs } from "./debug";
 import { printAssistant, printTool, printResult, printError, createSpinner } from "./ui";
 
@@ -14,6 +14,18 @@ export interface AgentDeps {
   systemPrompt: string;
   /** Where the chat() function comes from; injected for testability. */
   chat?: typeof chat;
+  /**
+   * If provided, streaming path is used: chatStream is invoked, chunks
+   * are emitted to `onStreamChunk`, and the spinner is skipped. The
+   * agent still resolves to the assembled AssistantTurn at the end.
+   */
+  streamChat?: typeof chatStream;
+  /** Receives every visible text chunk as it streams. */
+  onStreamChunk?: (chunk: string) => void;
+  /** Called before the first chunk of a streamed assistant turn. */
+  onStreamStart?: () => void;
+  /** Called when the streamed assistant turn finishes. */
+  onStreamEnd?: () => void;
   /** Optional logging hooks; default to debug.ts. */
   onAssistantText?: (text: string) => void;
   onToolCall?: (calls: ToolCall[]) => void;
@@ -70,19 +82,31 @@ export async function getLLMResponse(
     cfg.apiKey = deps.apiKey || getEnvApiKey(deps.provider);
   }
 
+  const useStreaming =
+    !!deps.streamChat && !!deps.onStreamChunk;
+
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     debug(`Iteration ${i + 1}: Calling LLM`, {
       provider: deps.provider,
       model: deps.model,
       messagesIn: working.length,
+      streaming: useStreaming,
     });
 
     let assistantTurn: AssistantTurn;
     try {
       const startTime = Date.now();
-      assistantTurn = deps.withSpinner
-        ? await deps.withSpinner(() => chatFn(working, cfg))
-        : await chatFn(working, cfg);
+      if (useStreaming) {
+        deps.onStreamStart?.();
+        assistantTurn = await deps.streamChat!(working, cfg, {
+          onText: deps.onStreamChunk!,
+        });
+        deps.onStreamEnd?.();
+      } else {
+        assistantTurn = deps.withSpinner
+          ? await deps.withSpinner(() => chatFn(working, cfg))
+          : await chatFn(working, cfg);
+      }
       const duration = Date.now() - startTime;
       logLLM("assistant", assistantTurn.text, {
         provider: deps.provider,
@@ -105,7 +129,11 @@ export async function getLLMResponse(
     newTurns.push(assistantTurn);
 
     // Surface assistant prose to the user.
-    if (assistantTurn.text) {
+    //
+    // When streaming, chunks have already been delivered to the user via
+    // onStreamChunk; we do NOT replay the assembled text here to avoid
+    // double-printing.
+    if (!useStreaming && assistantTurn.text) {
       if (deps.onAssistantText) deps.onAssistantText(assistantTurn.text);
       else printAssistant(assistantTurn.text.slice(0, 500));
     }
