@@ -63,15 +63,38 @@ export async function writeFile(filePath: string, content: string): Promise<File
   }
 }
 
-export async function editFile(filePath: string, oldString: string, newString: string): Promise<FileOperationResult> {
+export interface EditFileOptions {
+  /** When false (default), require exactly one occurrence of oldString. */
+  replaceAll?: boolean;
+}
+
+export async function editFile(
+  filePath: string,
+  oldString: string,
+  newString: string,
+  options: EditFileOptions = {}
+): Promise<FileOperationResult> {
   const r = resolveWithinWorkspace(filePath);
   if (!r.ok) return { success: false, error: r.error };
+  if (oldString === "") {
+    return { success: false, error: "oldString must be non-empty" };
+  }
   try {
     const content = await fs.readFile(r.absolute, "utf-8");
-    if (!content.includes(oldString)) {
+    const parts = content.split(oldString);
+    if (parts.length === 1) {
       return { success: false, error: "String not found" };
     }
-    const newContent = content.replace(oldString, newString);
+    if (!options.replaceAll && parts.length > 2) {
+      return {
+        success: false,
+        error: `oldString matches ${parts.length - 1} locations; pass replaceAll:true to replace all, or expand oldString to be unique`,
+      };
+    }
+    // split/join (not String.replace) so `$&`, `$1`, `$$` in newString are
+    // not interpreted as special replacement patterns. This is the fix for
+    // review item B9.
+    const newContent = parts.join(newString);
     await fs.writeFile(r.absolute, newContent, "utf-8");
     return { success: true };
   } catch (error) {
