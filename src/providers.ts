@@ -1,3 +1,5 @@
+import { AgentMode } from "./conversation";
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
@@ -24,6 +26,7 @@ export interface LLMConfig {
   apiKey?: string;
   model: string;
   tools?: any[];
+  mode?: AgentMode;
 }
 
 export interface LLMProviderConfig {
