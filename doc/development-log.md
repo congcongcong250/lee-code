@@ -15,17 +15,47 @@ lee-code is a CLI coding assistant inspired by Claude Code. It's designed to be 
 
 ## Entry Template
 
-```
-## [YYYY-MM-DD HH:MM] - [Title]
+The log mixes small one-iteration entries with larger retrospectives. Use whichever shape fits the change.
 
-**Iteration**: [commit or version]
-**Problem**: [What was the issue]
-**Solution**: [How it was solved]
-**Caveat**: [Any gotchas or注意事项]
-**Solved**: [✓ or what's left]
-**Not Solved**: [if any]
-**Reason/Lesson**: [Why this happened, what was learned]
+### Small entry (single iteration / one bug)
+
+```markdown
+## YYYY-MM-DD HH:MM — Title
+
+> **Iteration**: `<commit or tag>` · **Type**: Feature | Fix | Refactor | Process
+
+**Problem**  — what was wrong
+**Solution** — what was done
+**Lesson**   — why it happened, what to remember
+**Open**     — anything left (omit if none)
 ```
+
+### Retrospective entry (multi-commit work, reviews, process changes)
+
+```markdown
+## YYYY-MM-DD — Title
+
+> **Iteration**: `<tag or commit range>` · **Type**: Review | Refactor | Process
+
+### Context
+Why this work happened — the trigger, the constraint, the question.
+
+### What changed
+Prose or a short table. For multi-commit work, a stage-by-stage table
+beats a wall of bullets.
+
+### Lessons
+For future-me. Be specific — "tests caught X because we asserted Y" is
+more useful than "tests are good".
+
+### Open items
+Anything left undone. Skip if none.
+```
+
+**Formatting guidance**
+- Lead with a 1–2 sentence summary so the entry is scannable.
+- Quote the relevant tag / commit short-sha so `git show` is one step away.
+- "Lessons" is the section future-you will actually re-read. Make it earn its place.
 
 ---
 
@@ -431,5 +461,119 @@ vLLM converts MiniMax's internal XML-ish tool format → proper `tool_calls` API
 ### Final Status: 2026-05-10 23:55
 
 Tool calling NOW WORKS but required 12+ manual fixes. This should have been caught by proper integration testing, not by manual debugging.
+
+---
+
+## 2026-05-11 — Red-Team Code Review (Opus 4.7)
+
+> **Iteration**: tag `stage-opencode-minimax-M2.5-Free` · **Type**: Review
+
+### Context
+After the 2026-05-10 firefight ("12+ manual fixes for tool calling"), the codebase finally *worked* on the happy path — but only after a string of fragile patches. Before going further, I wanted an honest read of what was actually broken vs. what just happened to work. I ran a structured red-team review with Opus 4.7 in two independent passes (primary reviewer + isolated sub-agent) so I could trust findings that both passes reached. Output landed in `doc/Code-Review-opus-4.7-05-11.md`.
+
+### What changed
+No code changed in this entry — it's the diagnostic. The review produced:
+
+| Bucket | Count | Examples |
+|---|---|---|
+| 🔴 Critical security | 5 | `runCommand` shells with no allow-list, `readFile` traverses anywhere on disk, API keys un-redacted in JSONL logs |
+| 🐛 Provider correctness | 6 | `chatAnthropic` only sends the first user message; OpenAI `tool_call_id` dropped on the wire; default OpenRouter model id doesn't exist |
+| 🐛 Tool / parser bugs | 5 | format-2 regex is dead; format-6 plain-name fallback spam-loops on prose; `editFile` uses `String.replace` which expands `$&` |
+| 🐛 Lifecycle / leaks | 7 | log arrays unbounded; `saveLLMLogs` rewrites JSONL every iteration; spinner always reports success |
+| 📚 Doc lies | 3 | CLI subcommands and REPL commands (`:apikey`, `:logs`, `:save`) documented but never implemented |
+
+The most valuable section was §9 — a deep dive on **the central architectural defect**: one `ChatMessage[]` array trying to be two incompatible protocols (native function-calling and strict-JSON schema). That single insight reframed many "individual" bugs as symptoms of one structural problem.
+
+### Lessons
+- **Two independent reviews converge on the real bugs.** The `[A+B]` findings (both passes agreed) had a much higher signal-to-noise ratio than `[A]`-only or `[B]`-only ones. Worth the extra pass.
+- **A patch list and an architecture diagnosis are different deliverables.** The "Top 10" table told me *what to fix*; §9 told me *why those bugs existed*. Without §9, the fix list would have been whack-a-mole.
+- **The yesterday-firefight bugs were predictable from the architecture.** Most of the 12 manual fixes from 2026-05-10 mapped to the protocol-mixing problem. Fixing the architecture would have prevented them.
+
+### Open items
+The review is read-only — every finding still needed to be addressed. That became the 2026-05-14 work below.
+
+---
+
+## 2026-05-14 — Tooling Switch: Claude Code + Superpowers + a Custom `grill-me` Skill
+
+> **Iteration**: pre-implementation setup · **Type**: Process
+
+### Context
+The 2026-05-10 entry already flagged that "trust but verify" and "integration tests, not just unit tests" were the missing disciplines. The review on 2026-05-11 made that explicit. Going into the fix work, I wanted a session shape that *forced* explicit decisions and scope-narrowing **before** any code was written — not after.
+
+### What changed
+- **Switched the driver model** from the previous opencode setup to Claude Code with Opus 4.7.
+- **Installed the `superpowers` plugin** — gives access to disciplined skills like `brainstorming`, `writing-plans`, `test-driven-development`, `systematic-debugging`, `verification-before-completion`, etc. Each skill is a small contract the model agrees to follow.
+- **Created a custom `grill-me` skill** at `~/.claude/skills/grill-me/SKILL.md`. The skill instructs the model to interview me relentlessly about a plan, walking the decision tree branch-by-branch and providing a recommended answer for each question, before any implementation begins.
+
+The `grill-me` session before the implementation produced 6 forced decisions:
+1. Goal of the project (learning vs. daily-driver vs. portfolio) → **learning** ⇒ architectural depth is worth the time.
+2. Which providers are actually tested → **OpenRouter schema + native only** ⇒ Anthropic/HF are explicitly out of scope.
+3. Patch-by-patch vs. proper refactor for the message layer → **full refactor** (typed `Turn[]` + per-mode serializers) ⇒ fixes 6 bugs by construction instead of independently.
+4. Add security gates? → **yes, minimal** (workspace boundary + `[y/n/a]` for `runCommand`).
+5. Which "next stage" features → **streaming + writeFile/editFile tools + session persistence**.
+6. Implement or delete fake REPL commands (`:apikey`, `:logs`, `:save`) → **delete the docs**, not the code.
+
+### Lessons
+- **`AskUserQuestion` + `grill-me` flipped the cost of indecision.** Cheap to ask, expensive to discover mid-implementation. Decision #6 alone (delete vs. implement) saved an entire stage's worth of work.
+- **A "recommended answer" beside each question keeps the interview moving.** Pure open-ended questions stall; defaults that I can say "yes, recommended" or "no, here's why" to converge fast.
+- **Plan mode forced a written plan before any edits.** The plan file (`/Users/lirenxn/.claude/plans/vectorized-munching-thimble.md`, then copied as `doc/Code-Fix-Plan-sonnet-4.7-05-14.md`) became the contract for the 13 stages below — every commit could be traced back to a stage in the plan.
+- **Skills are leverage but only if they're *invoked*.** `using-superpowers` is the meta-skill that nags the model to check for relevant skills before acting. Without it, I'd have skipped `brainstorming` on the first task and re-learned 2026-05-10 the hard way.
+
+### Open items
+The plugin/skill workflow is great for big greenfield decisions but heavier than needed for micro-fixes. Worth re-evaluating after a few more sessions whether the ceremony cost stays in line.
+
+---
+
+## 2026-05-14 — Full Refactor + Next-Stage Features (13 Stages)
+
+> **Iteration**: `stage-opencode-minimax-M2.5-Free` → `9bd6c30` (14 commits) · **Type**: Refactor + Feature
+
+### Context
+Executing the plan locked in by the `grill-me` interview. The plan separated concerns into 13 stages, each with its own commit, so reviewability stayed high. Test count grew from 65 → 228 (+163).
+
+### What changed
+
+| # | Commit | Stage | Key change |
+|---|---|---|---|
+| 1 | `ca8f9cb` | Turn type | `Turn` discriminated union + `AgentMode` in `src/conversation.ts` |
+| 2 | `0ce6a67` | Serializers | Pure `serializeForOpenAINative / OpenAISchema / Ollama` in `src/serializers.ts` |
+| 3 | `58e1e6f` | Agent refactor | `chat()` accepts `Turn[]`; new `src/agent.ts` owns the loop with injectable `chat` fn; loop returns full `newTurns[]` delta (regression fix for the lost-history bug) |
+| — | `c403f01` | chore | Gitignore session-log artifacts so tests don't dirty the worktree |
+| 4 | `e2c1724` | Workspace boundary | `resolveWithinWorkspace()` rejects `../` and absolute escapes; gates `readFile / writeFile / editFile` (closes S2) |
+| 5 | `ded28b6` | Confirm gate | `[y/n/a(lways)]` prompt before `runCommand`; per-tool / per-session always-set (closes S1, S4) |
+| 6 | `d058858` | toolParser | Killed plain-name fallback (B7), fixed dead format-2 regex (B8), guarded `JSON.parse` (B5) |
+| 7 | `61f686b` | editFile | `split/join` instead of `String.replace`; require unique match unless `replaceAll:true` (closes B9 + a silent multi-match bug) |
+| 8 | `8b09ea8` | Default model | Switched from the non-existent `nvidia/nemotron-...` to `qwen/qwen3-next-80b-a3b-instruct:free` (closes B6) |
+| 9 | `3aaf490` | `-d` flag | Recognise `-d` as shorthand; extracted `parseArgs` for testability (closes B21) |
+| 10 | `c273f4d` | README | Removed fake CLI subcommands, fake REPL commands, the false "writes files" claim, and the silently-broken Anthropic/HF promises |
+| 11 | `61e21ba` | Streaming | SSE streaming for OpenAI-shaped providers; tool-call deltas accumulated by `index`; partial frames across read boundaries handled; spinner kept as fallback |
+| 12 | `eef28a5` | Write/Edit tools | Registered `writeFile`/`editFile` as agent tools, gated by `ConfirmGate` and workspace boundary; system prompt updated to teach them to the model |
+| 13 | `9bd6c30` | Session persistence | `:save` REPL command + `--continue <file>` flag; strict v1 schema validation on load |
+
+**The architectural pivot — Stage 3 — is the highest-leverage commit.** Once `Turn[]` is the canonical history and each provider+mode has its own serializer, several "independent" bugs from the review (B1, B4, schema-envelope-in-history, parallel-tool-call id collisions) disappear by construction. Streaming, write/edit tools, and session persistence all sit cleanly on top because the type already knows what an `AssistantTurn` and a `ToolTurn` look like.
+
+### Test posture (the thing yesterday's fires demanded)
+Every stage adds at least one regression test that would catch the bug if it were reintroduced. Highlights:
+- `tests/agent.test.ts` — fakes `chat()` and proves the loop returns *all* tool turns in the delta. The lost-history bug from 2026-05-10 cannot return silently.
+- `tests/llm-wire.test.ts` — mocks `fetch` and asserts the request body. Schema-mode payload must NOT contain `tools`; native-mode must NOT contain `response_format`. The architectural collision can't recur.
+- `tests/streaming.test.ts` — builds a real `ReadableStream<Uint8Array>` and feeds the parser SSE frames split across read boundaries. Proves the assembler works on the byte-level path that production hits.
+- `tests/fileOps-boundary.test.ts` — includes the classic prefix-collision case (workspace `/tmp/a` vs. resolved `/tmp/abc/x`), the one that a naive `startsWith` would miss.
+- `tests/editFile.test.ts` — explicit cases for `$&`, `$1`, `$$` in `newString` to lock in B9's fix.
+
+### Lessons
+- **One typed internal model + per-mode serializers > one polymorphic message array.** Said in the review §9; proven by Stage 3. Bugs B1, B4, B5, parallel-id collision, and schema-envelope-in-history were all fixed by the *shape change*, not by separate patches.
+- **Dependency injection at the agent boundary unlocks real integration tests.** `getLLMResponse` accepts an injected `chat` function. That single seam is why `tests/agent.test.ts` exists — and why "did the loop pass the prior tool turn to iteration 2?" became a real test instead of a fingers-crossed manual check.
+- **Mocked-`fetch` integration tests catch protocol bugs that unit tests can't.** The schema/native collision was invisible at the function level. It only showed up in the request body. The wire-level tests are now the contract.
+- **Splitting commits by concern, not by file, makes review tractable.** Stages 6 (parser), 7 (editFile), 8 (default model) each touched different concerns and each has its own commit. The diff for any single concern is small enough to review carefully.
+- **"Just delete the false docs" can be a legitimate fix.** Plan question #6 (implement vs. delete `:apikey/:logs/:save`) ended up choosing delete. Reduced scope by an entire stage and the README is now honest. Honesty in docs is a feature.
+- **Tests pollute the worktree if you don't think about side effects.** `saveLLMLogs()` ran during the agent test suite and left JSONL files at repo root. Caught it after Stage 3; gitignored before it became a habit. Worth a teardown hook if more side-effects creep in.
+- **Mocks are acceptable for integration tests** (per the user's explicit instruction). For everything that wasn't a real fetch (auth/model availability), a queued-prompt or scripted-`chat` mock was enough to prove the contract held.
+
+### Open items
+- `chatAnthropic` and `chatHuggingFace` are explicit "not implemented in Turn[] refactor" stubs. They were out of scope per Plan question #2. Re-enabling them is a future-stage refactor (one serializer + one HTTP path each).
+- `loadProjectContext` still only reads `package.json` and `tsconfig.json`. The README's `CLAUDE.md / MEMORY.md` mention was deferred, not yet implemented.
+- The `chatLegacy` shim in `src/llm.ts` is back-compat for callers that want the old `ChatResponse` shape. Once `:logs`-style callers (none today) are sure not to need it, it can be removed.
+- `saveLLMLogs()` still uses sync `require("fs")` from `debug.ts` and rewrites the whole JSONL on every iteration (review's B13 / debug.ts mixed-module note). Not addressed in this batch; flagged for the next round of cleanup.
 
 ---
