@@ -1,156 +1,99 @@
 # lee-code
 
-A CLI coding assistant inspired by Claude Code. Connects to LLMs (Ollama, Groq, OpenAI, Anthropic, HuggingFace).
-
-## TODO
-
-- [ ] Review conversation log and fix status: error
-- [ ] Review conversation and fix LLM returning weird error
-- [ ] Override body schema tools if there's native messages tools
-- [ ] Summarize a PRD and one shot with Codex or Claude Code
+A learning-focused CLI coding assistant inspired by Claude Code. Drives a multi-provider LLM (OpenRouter primary; OpenAI, Groq, Ollama supported) through an agentic tool loop.
 
 ## Quick Start
 
 ```bash
-cd lee-code
 npm install
 npm run build
-node dist/cli.js              # Interactive mode
-node dist/cli.js help       # Show help
+export OPENROUTER_API_KEY=sk-or-...
+node dist/cli.js              # Interactive REPL
 ```
 
 ## Features
 
-- **File Operations** - Read, write, edit files
-- **Codebase Search** - Glob patterns via fast-glob
-- **Command Execution** - Run shell commands
-- **Interactive CLI** - REPL with history
-- **Project Context** - CLAUDE.md / MEMORY.md
-- **LLM Integration** - Connect to Ollama, Groq, OpenAI, Anthropic, HuggingFace
-- **Tool Calling** - Agentic loop with fuzzy tool parsing
-- **Verbose Logging** - Complete LLM request/response history
+- **OpenRouter as primary provider** with both native function-calling and strict-JSON schema modes
+- **Typed Turn[] internal history** with per-mode wire-format serializers (no schema-vs-native protocol mixing)
+- **Agentic tool loop** with three tools: `readFile`, `searchFiles`, `runCommand`
+- **Workspace boundary** on `readFile` / `writeFile` / `editFile` — paths outside `cwd` are rejected
+- **Confirmation gate** (`[y/n/a]`) before every `runCommand` execution
+- **Fuzzy text tool parser** as a fallback for models that don't return structured tool calls
+- **JSONL session log** for debugging the agent loop end-to-end
 
-## Usage
+## Interactive REPL
 
-### Interactive Mode
-
-```bash
+```
 node dist/cli.js
-❯ help
-❯ search "src/**/*.ts"
-❯ read src/cli.ts
-❯ run npm test
-❯ :provider    # Change LLM provider
+❯ what files are in this project?
+❯ :provider     # switch provider / model
+❯ :files        # list files in workspace
+❯ :context      # show loaded project context
+❯ :clear        # reset conversation history
+❯ :help         # list commands
 ❯ :quit
 ```
 
-### Commands
+### REPL commands
+
+| Command | Effect |
+|---|---|
+| `:quit` / `:q` | Exit |
+| `:help` | Show this list |
+| `:clear` | Reset chat history (keeps provider) |
+| `:provider` | Pick a provider and model |
+| `:files` | Print workspace file list |
+| `:context` | Show the project context that was loaded into the system prompt |
+
+## CLI flags
+
+```
+--debug, -d     # debug logging (shows iteration / tool / message counts)
+--verbose, -v   # verbose mode: logs every LLM request/response to JSONL
+```
+
+Any positional arguments after the flags are joined and run via `runCommand` (the agent loop is interactive-only). To use the assistant non-interactively you currently need to drive it via the REPL.
+
+## API keys
+
+Set via env var:
+
+| Provider | Env Variable | Notes |
+|----------|------------|---|
+| OpenRouter | `OPENROUTER_API_KEY` | Default. Free models supported. |
+| OpenAI | `OPENAI_API_KEY` | |
+| Groq | `GROQ_API_KEY` | OpenAI-compatible. |
+| Ollama | (none) | Runs at `http://localhost:11434` |
+| Anthropic | `ANTHROPIC_API_KEY` | ⚠️ Not implemented in the Turn[] refactor — provider stub throws. |
+| HuggingFace | `HF_TOKEN` | ⚠️ Not implemented in the Turn[] refactor — provider stub throws. |
+
+## Built-in tools
+
+| Tool | Effect | Gated? |
+|---|---|---|
+| `readFile(path)` | Read a file inside the workspace | Workspace boundary |
+| `searchFiles(pattern)` | Glob search inside the workspace | — |
+| `runCommand(command)` | Run a shell command | Workspace boundary + `[y/n/a]` confirmation |
+
+The model can also output tools in fuzzy text format (`[TOOL_CALL]`, `<toolName>...</toolName>`, etc.) — see `src/toolParser.ts` for the supported shapes.
+
+## Session log files
+
+When `--verbose` is on (or simply during normal operation), the agent writes a JSONL log of every turn to `lee-<sessionId>.jsonl` and a pretty JSON copy. These are gitignored.
+
+## Project context
+
+`loadProjectContext()` reads `package.json` and `tsconfig.json` at session start and injects a short summary into the system prompt. `CLAUDE.md` / `MEMORY.md` are not yet read — that's a planned feature.
+
+## Architecture notes
+
+The agent uses a typed internal history (`Turn[]` in `src/conversation.ts`) that is serialised to the right wire shape per provider+mode in `src/serializers.ts`. This avoids the common bug where one `messages` array tries to serve two incompatible protocols (native function calling vs strict-JSON-schema response mode). See `doc/Code-Review-opus-4.7-05-11.md` §9 for the long-form rationale.
+
+## Development
 
 ```bash
-node dist/cli.js read <file>        # Read file
-node dist/cli.js write <file> <content>  # Write file  
-node dist/cli.js search <pattern>  # Search files
-node dist/cli.js run <command>   # Run command
-node dist/cli.js context         # Show project context
-node dist/cli.js help          # Show help
+npm run build    # tsc to dist/
+npm test         # vitest run
 ```
 
-### Flags
-
-```bash
---debug, -d     # Enable debug mode (shows iteration logs)
---verbose, -v    # Enable verbose mode (logs all LLM requests/responses)
-```
-
-## Verbose Logging
-
-In verbose mode, lee-code logs all LLM interactions to a JSONL file.
-
-### Enable Verbose Mode
-
-```bash
-# Via flag
-node dist/cli.js --verbose
-
-# In interactive mode
-❯ :logs
-```
-
-### Log Files
-
-- Session ID format: `lee-<timestamp>-<random>.jsonl`
-- Auto-saved after each interaction
-- Also saved on `:quit`
-
-### Log Format (JSONL)
-
-```json
-{"sessionId":"lee-123456-abc123","timestamp":"2024-01-01T12:00:00.000Z","role":"user","content":"Hello","provider":"groq","model":"llama-3.3-70b-versatile","iteration":1}
-{"sessionId":"lee-123456-abc123","timestamp":"2024-01-01T12:00:01.000Z","role":"assistant","content":"Hi! How can I help?","provider":"groq","model":"llama-3.3-70b-versatile","iteration":1,"duration":1500}
-```
-
-### View Logs
-
-```bash
-# In interactive mode
-❯ :logs           # Show session stats + recent logs
-❯ :logs stats    # Same as above
-❯ :logs save    # Save debug logs to file
-❯ :logs save verbose  # Save verbose LLM logs
-```
-
-## Tool Calling
-
-lee-code has an agentic loop that executes tools when the LLM requests them.
-
-### Available Tools
-
-- `readFile(path)` - Read a file
-- `searchFiles(pattern)` - Find files using glob pattern
-- `runCommand(command)` - Execute shell command
-
-### Fuzzy Tool Parsing
-
-The LLM may output tools in various formats - lee-code parses them all:
-
-```
-[TOOL_CALL]{tool => "searchFiles" args => { --pattern: "**/*.ts" }}
-`searchFiles: **/*.ts`
-```
-
-## API Keys Required
-
-Set via env vars or use `:apikey` in interactive mode:
-
-| Provider | Env Variable | Default Model |
-|----------|------------|---------------|
-| Groq (free) | `GROQ_API_KEY` | llama-3.3-70b-versatile |
-| OpenAI | `OPENAI_API_KEY` | gpt-4o-mini |
-| Anthropic | `ANTHROPIC_API_KEY` | claude-3-haiku |
-| Ollama | (local) | llama3 |
-| HuggingFace | `HF_TOKEN` | meta-llama/Llama-3.1-70b-instruct |
-
-Get free API keys:
-- **Groq**: https://console.groq.com
-- **OpenAI**: https://platform.openai.com
-- **Anthropic**: https://console.anthropic.com
-- **HuggingFace**: https://huggingface.co
-
-## Project Context
-
-Create these files in your project root:
-- `CLAUDE.md` - Project instructions, conventions, coding standards
-- `MEMORY.md` - Auto-saved learnings across sessions
-
-## Dependencies
-
-- fast-glob - File searching
-- Node.js built-in: fs, path, readline, child_process, fetch
-
-## Requirements Met
-
-1. ✅ File Operations (read, write, edit)
-2. ✅ Codebase Search (fast-glob)
-3. ✅ Command Execution (shell)
-4. ✅ Interactive CLI (REPL)
-5. ✅ LLM Integration (multiple providers)
+The agent loop in `src/agent.ts` accepts an injected `chat` function, so it can be exercised end-to-end without real network calls (see `tests/agent.test.ts`).
