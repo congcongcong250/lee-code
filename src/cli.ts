@@ -7,7 +7,7 @@ import { LLMProvider, getEnvApiKey, OPENROUTER_MODELS, listProviders } from "./l
 import { registerTool, getTool, listTools, Tool } from "./tools";
 import { setLogLevel, setVerboseMode } from "./debug";
 import { loadProjectContext } from "./context";
-import { searchFiles, readFile } from "./fileOps";
+import { searchFiles, readFile, writeFile, editFile } from "./fileOps";
 import { runCommand } from "./shell";
 import {
   COLORS,
@@ -59,6 +59,33 @@ const toolSchemas: Tool[] = [
         command: { type: "string", description: "Shell command to execute" },
       },
       required: ["command"],
+    },
+  },
+  {
+    name: "writeFile",
+    description: "Write content to a file inside the workspace, creating it if needed.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "File path inside the workspace" },
+        content: { type: "string", description: "Full file contents to write" },
+      },
+      required: ["path", "content"],
+    },
+  },
+  {
+    name: "editFile",
+    description:
+      "Replace a substring in an existing file. oldString must match exactly once unless replaceAll is true.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "File path inside the workspace" },
+        oldString: { type: "string", description: "Exact substring to replace; must be unique unless replaceAll is true" },
+        newString: { type: "string", description: "Replacement substring" },
+        replaceAll: { type: "boolean", description: "If true, replace every occurrence" },
+      },
+      required: ["path", "oldString", "newString"],
     },
   },
 ];
@@ -139,6 +166,60 @@ export function registerDefaultTools(confirmGate: ConfirmGate): void {
         },
         ts
       );
+    } else if (ts.name === "writeFile") {
+      registerTool(
+        ts.name,
+        async (args) => {
+          try {
+            const filePath = (args.path || args.filePath) as string;
+            const content = (args.content ?? "") as string;
+            if (!filePath) return { success: false, error: "Missing path argument" };
+            const allowed = await confirmGate.ask(
+              "writeFile",
+              `${filePath} (${content.length} bytes)`
+            );
+            if (!allowed) return { success: false, error: "Cancelled by user" };
+            const r = await writeFile(filePath, content);
+            return r.success
+              ? { success: true, result: `Wrote ${filePath}` }
+              : { success: false, error: r.error || "Write failed" };
+          } catch (e: any) {
+            return { success: false, error: e.message };
+          }
+        },
+        ts
+      );
+    } else if (ts.name === "editFile") {
+      registerTool(
+        ts.name,
+        async (args) => {
+          try {
+            const filePath = (args.path || args.filePath) as string;
+            const oldString = args.oldString as string;
+            const newString = args.newString as string;
+            const replaceAll = !!args.replaceAll;
+            if (!filePath) return { success: false, error: "Missing path argument" };
+            if (typeof oldString !== "string" || typeof newString !== "string") {
+              return {
+                success: false,
+                error: "editFile requires string oldString and newString",
+              };
+            }
+            const allowed = await confirmGate.ask(
+              "editFile",
+              `${filePath}: replace ${JSON.stringify(oldString).slice(0, 60)} -> ${JSON.stringify(newString).slice(0, 60)}`
+            );
+            if (!allowed) return { success: false, error: "Cancelled by user" };
+            const r = await editFile(filePath, oldString, newString, { replaceAll });
+            return r.success
+              ? { success: true, result: `Edited ${filePath}` }
+              : { success: false, error: r.error || "Edit failed" };
+          } catch (e: any) {
+            return { success: false, error: e.message };
+          }
+        },
+        ts
+      );
     }
   }
 }
@@ -150,11 +231,13 @@ function buildSystemPrompt(projectContext: string): string {
   return `You are lee-code, a CLI coding assistant.
 
 You have these tools:
-- readFile(path): Read a file
-- searchFiles(pattern): Find files using glob
-- runCommand(command): Run a shell command
+- readFile(path): Read a file inside the workspace
+- searchFiles(pattern): Find files using glob, inside the workspace
+- runCommand(command): Run a shell command (requires user confirmation)
+- writeFile(path, content): Write/replace a file (requires confirmation)
+- editFile(path, oldString, newString, replaceAll?): Replace a unique substring in a file (requires confirmation). oldString MUST match exactly once unless replaceAll is true.
 
-IMPORTANT: When you need to use a tool, call it properly. If the user asks about code, search or read files first.
+IMPORTANT: When you need to use a tool, call it properly. If the user asks about code, search or read files first. Prefer editFile over writeFile when modifying an existing file so context is preserved.
 
 In schema mode, tool results are returned to you as user messages prefixed with:
   [tool_result name=<tool> id=<callId>]
