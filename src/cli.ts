@@ -251,24 +251,51 @@ async function startInteractive() {
   }
 }
 
-async function main() {
-  const args = process.argv.slice(2);
-  const flags = args.filter((a) => a.startsWith("--") || a.startsWith("-"));
-  const commandArgs = args.filter((a) => !a.startsWith("--") && !a.startsWith("-"));
+export interface ParsedArgs {
+  debug: boolean;
+  verbose: boolean;
+  positional: string[];
+  unknown: string[];
+}
 
-  for (const flag of flags) {
-    if (flag === "--debug") {
-      setLogLevel("debug");
-      console.log(`${COLORS.yellow}🔍 Debug mode enabled - verbose logging active${COLORS.reset}`);
+/**
+ * Parse argv flags. Exported for tests.
+ *
+ * Recognised:
+ *   --debug | -d        enable debug logging
+ *   --verbose | -v      enable verbose LLM request/response logging
+ *
+ * Anything else that looks like a flag goes into `unknown` so the caller
+ * can decide what to do (we currently ignore it).
+ */
+export function parseArgs(argv: string[]): ParsedArgs {
+  const out: ParsedArgs = { debug: false, verbose: false, positional: [], unknown: [] };
+  for (const a of argv) {
+    if (!a.startsWith("-")) {
+      out.positional.push(a);
+      continue;
     }
-    if (flag === "--verbose" || flag === "-v") {
-      setVerboseMode(true);
-      console.log(`${COLORS.cyan}📝 Verbose mode enabled - LLM requests/responses will be logged${COLORS.reset}`);
-    }
+    if (a === "--debug" || a === "-d") out.debug = true;
+    else if (a === "--verbose" || a === "-v") out.verbose = true;
+    else out.unknown.push(a);
+  }
+  return out;
+}
+
+async function main() {
+  const parsed = parseArgs(process.argv.slice(2));
+
+  if (parsed.debug) {
+    setLogLevel("debug");
+    console.log(`${COLORS.yellow}🔍 Debug mode enabled - verbose logging active${COLORS.reset}`);
+  }
+  if (parsed.verbose) {
+    setVerboseMode(true);
+    console.log(`${COLORS.cyan}📝 Verbose mode enabled - LLM requests/responses will be logged${COLORS.reset}`);
   }
 
-  if (commandArgs.length > 0) {
-    const result = await runCommand(commandArgs.join(" "), []);
+  if (parsed.positional.length > 0) {
+    const result = await runCommand(parsed.positional.join(" "), []);
     console.log(result.stdout || result.stderr || "");
   } else {
     await startInteractive();
