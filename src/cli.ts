@@ -22,6 +22,7 @@ import {
 import { getState, setProvider, setModel } from "./state";
 import { Turn } from "./conversation";
 import { getLLMResponse, spinnerWrapper } from "./agent";
+import { createConfirmGate, ConfirmGate } from "./confirm";
 
 enableColors();
 
@@ -61,62 +62,6 @@ const toolSchemas: Tool[] = [
   },
 ];
 
-for (const ts of toolSchemas) {
-  if (ts.name === "searchFiles") {
-    registerTool(
-      ts.name,
-      async (args) => {
-        try {
-          const pattern = (args.pattern || args.path) as string;
-          if (!pattern) return { success: false, error: "Missing pattern argument" };
-          const files = await searchFiles(pattern);
-          return { success: true, result: JSON.stringify(files) };
-        } catch (e: any) {
-          return { success: false, error: e.message };
-        }
-      },
-      ts
-    );
-  } else if (ts.name === "readFile") {
-    registerTool(
-      ts.name,
-      async (args) => {
-        try {
-          const filePath = (args.path || args.filePath) as string;
-          if (!filePath) return { success: false, error: "Missing path argument" };
-          const result = await readFile(filePath);
-          if (result.success) {
-            return { success: true, result: result.data || "" };
-          } else {
-            return { success: false, error: result.error || "Read failed" };
-          }
-        } catch (e: any) {
-          return { success: false, error: e.message };
-        }
-      },
-      ts
-    );
-  } else if (ts.name === "runCommand") {
-    registerTool(
-      ts.name,
-      async (args) => {
-        try {
-          const command = (args.command || args.cmd) as string;
-          if (!command) return { success: false, error: "Missing command argument" };
-          const result = await runCommand(command);
-          const output = result.success
-            ? result.stdout || ""
-            : result.error || "Command failed";
-          return { success: true, result: output };
-        } catch (e: any) {
-          return { success: false, error: e.message };
-        }
-      },
-      ts
-    );
-  }
-}
-
 export async function promptQuestion(question: string): Promise<string> {
   const readline = await import("readline");
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -127,6 +72,78 @@ export async function promptQuestion(question: string): Promise<string> {
     });
   });
 }
+
+/**
+ * Register the three default agent tools.
+ *
+ * Exported (and parameterised on a ConfirmGate) so tests can register the
+ * tools against a mock prompt and verify gating behaviour without touching
+ * the global REPL.
+ */
+export function registerDefaultTools(confirmGate: ConfirmGate): void {
+  for (const ts of toolSchemas) {
+    if (ts.name === "searchFiles") {
+      registerTool(
+        ts.name,
+        async (args) => {
+          try {
+            const pattern = (args.pattern || args.path) as string;
+            if (!pattern) return { success: false, error: "Missing pattern argument" };
+            const files = await searchFiles(pattern);
+            return { success: true, result: JSON.stringify(files) };
+          } catch (e: any) {
+            return { success: false, error: e.message };
+          }
+        },
+        ts
+      );
+    } else if (ts.name === "readFile") {
+      registerTool(
+        ts.name,
+        async (args) => {
+          try {
+            const filePath = (args.path || args.filePath) as string;
+            if (!filePath) return { success: false, error: "Missing path argument" };
+            const result = await readFile(filePath);
+            if (result.success) {
+              return { success: true, result: result.data || "" };
+            } else {
+              return { success: false, error: result.error || "Read failed" };
+            }
+          } catch (e: any) {
+            return { success: false, error: e.message };
+          }
+        },
+        ts
+      );
+    } else if (ts.name === "runCommand") {
+      registerTool(
+        ts.name,
+        async (args) => {
+          try {
+            const command = (args.command || args.cmd) as string;
+            if (!command) return { success: false, error: "Missing command argument" };
+            const allowed = await confirmGate.ask("runCommand", command);
+            if (!allowed) {
+              return { success: false, error: "Cancelled by user" };
+            }
+            const result = await runCommand(command);
+            const output = result.success
+              ? result.stdout || ""
+              : result.error || "Command failed";
+            return { success: true, result: output };
+          } catch (e: any) {
+            return { success: false, error: e.message };
+          }
+        },
+        ts
+      );
+    }
+  }
+}
+
+const interactiveConfirmGate = createConfirmGate(promptQuestion);
+registerDefaultTools(interactiveConfirmGate);
 
 function buildSystemPrompt(projectContext: string): string {
   return `You are lee-code, a CLI coding assistant.
