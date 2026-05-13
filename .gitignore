@@ -6,3 +6,8 @@
 .DS_Store
 node_modules
 dist
+
+# Session log artifacts written by debug.ts
+lee-*.jsonl
+lee-*.pretty.json
+.lee-sessions/
