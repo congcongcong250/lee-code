@@ -24,6 +24,8 @@ import { Turn } from "./conversation";
 import { getLLMResponse, spinnerWrapper } from "./agent";
 import { createConfirmGate, ConfirmGate } from "./confirm";
 import { chatStream } from "./llm";
+import { saveSession, loadSession } from "./session";
+import { getSessionIdValue } from "./debug";
 
 enableColors();
 
@@ -250,26 +252,47 @@ ${projectContext}
 Respond concisely. Use tools when needed.`;
 }
 
-async function startInteractive() {
+export interface StartInteractiveOptions {
+  resumeFrom?: string;
+}
+
+async function startInteractive(opts: StartInteractiveOptions = {}) {
   const state = getState();
 
   printHeader();
 
   console.log(`${COLORS.gray}Provider: ${state.provider} (${state.model})${COLORS.reset}`);
-  console.log(`${COLORS.gray}Commands: :quit, :help, :clear, :provider, :files, :context${COLORS.reset}`);
-  console.log("");
+  console.log(
+    `${COLORS.gray}Commands: :quit, :help, :clear, :provider, :files, :context, :save${COLORS.reset}`
+  );
 
   // Load project context once at session start (not per turn).
   const projectContext = await loadProjectContext(process.cwd());
   const systemPrompt = buildSystemPrompt(projectContext);
 
   let history: Turn[] = [];
+
+  if (opts.resumeFrom) {
+    try {
+      const loaded = await loadSession(opts.resumeFrom);
+      history = loaded.turns;
+      printSuccess(
+        `Resumed session ${loaded.sessionId} (${history.length} turns) from ${opts.resumeFrom}`
+      );
+    } catch (e) {
+      printError(`Failed to load session: ${(e as Error).message}`);
+    }
+  }
+  console.log("");
+
   let running = true;
 
   while (running) {
     const input = await promptQuestion("❯ ");
     console.log("");
     const cmd = input.trim().toLowerCase();
+    const cmdParts = input.trim().split(/\s+/);
+    const cmdHead = cmdParts[0]?.toLowerCase() ?? "";
 
     if (cmd === ":quit" || cmd === ":q") {
       running = false;
@@ -282,6 +305,20 @@ async function startInteractive() {
       console.log("  :provider - Select provider/model");
       console.log("  :files    - List project files");
       console.log("  :context  - Show project context");
+      console.log("  :save [path] - Save the current session (default .lee-sessions/<sessionId>.json)");
+    } else if (cmdHead === ":save") {
+      try {
+        const sessionId = getSessionIdValue();
+        const file = await saveSession({
+          sessionId,
+          turns: history,
+          provider: state.provider,
+          model: state.model,
+        });
+        printSuccess(`Saved ${history.length} turns to ${file}`);
+      } catch (e) {
+        printError(`Save failed: ${(e as Error).message}`);
+      }
     } else if (cmd === ":clear") {
       history = [];
       printSuccess("History cleared");
@@ -354,6 +391,7 @@ async function startInteractive() {
 export interface ParsedArgs {
   debug: boolean;
   verbose: boolean;
+  continueFrom?: string;
   positional: string[];
   unknown: string[];
 }
@@ -362,22 +400,38 @@ export interface ParsedArgs {
  * Parse argv flags. Exported for tests.
  *
  * Recognised:
- *   --debug | -d        enable debug logging
- *   --verbose | -v      enable verbose LLM request/response logging
+ *   --debug | -d           enable debug logging
+ *   --verbose | -v         enable verbose LLM request/response logging
+ *   --continue <path>      load a saved session file before entering REPL
  *
  * Anything else that looks like a flag goes into `unknown` so the caller
  * can decide what to do (we currently ignore it).
  */
 export function parseArgs(argv: string[]): ParsedArgs {
   const out: ParsedArgs = { debug: false, verbose: false, positional: [], unknown: [] };
-  for (const a of argv) {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
     if (!a.startsWith("-")) {
       out.positional.push(a);
       continue;
     }
-    if (a === "--debug" || a === "-d") out.debug = true;
-    else if (a === "--verbose" || a === "-v") out.verbose = true;
-    else out.unknown.push(a);
+    if (a === "--debug" || a === "-d") {
+      out.debug = true;
+    } else if (a === "--verbose" || a === "-v") {
+      out.verbose = true;
+    } else if (a === "--continue") {
+      const next = argv[i + 1];
+      if (next && !next.startsWith("-")) {
+        out.continueFrom = next;
+        i++;
+      } else {
+        out.unknown.push(a);
+      }
+    } else if (a.startsWith("--continue=")) {
+      out.continueFrom = a.slice("--continue=".length);
+    } else {
+      out.unknown.push(a);
+    }
   }
   return out;
 }
@@ -398,7 +452,7 @@ async function main() {
     const result = await runCommand(parsed.positional.join(" "), []);
     console.log(result.stdout || result.stderr || "");
   } else {
-    await startInteractive();
+    await startInteractive({ resumeFrom: parsed.continueFrom });
   }
 }
 

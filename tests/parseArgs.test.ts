@@ -37,4 +37,28 @@ describe("parseArgs", () => {
     const p = parseArgs([]);
     expect(p).toEqual({ debug: false, verbose: false, positional: [], unknown: [] });
   });
+
+  it("--continue <path> captures the following positional as the file", () => {
+    const p = parseArgs(["--continue", ".lee-sessions/abc.json"]);
+    expect(p.continueFrom).toBe(".lee-sessions/abc.json");
+    expect(p.positional).toEqual([]);
+  });
+
+  it("--continue=<path> form is supported", () => {
+    const p = parseArgs(["--continue=./x.json"]);
+    expect(p.continueFrom).toBe("./x.json");
+  });
+
+  it("--continue without a value goes to unknown", () => {
+    const p = parseArgs(["--continue"]);
+    expect(p.continueFrom).toBeUndefined();
+    expect(p.unknown).toEqual(["--continue"]);
+  });
+
+  it("--continue --debug treats --debug as the next flag, not the path", () => {
+    const p = parseArgs(["--continue", "--debug"]);
+    expect(p.continueFrom).toBeUndefined();
+    expect(p.unknown).toEqual(["--continue"]);
+    expect(p.debug).toBe(true);
+  });
 });
